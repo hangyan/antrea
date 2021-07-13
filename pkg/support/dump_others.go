@@ -17,12 +17,13 @@
 package support
 
 import (
-	"antrea.io/antrea/pkg/agent/config"
-	"antrea.io/antrea/pkg/agent/util/iptables"
-	"antrea.io/antrea/pkg/util/logdir"
 	"fmt"
 	"path"
 	"path/filepath"
+
+	"antrea.io/antrea/pkg/agent/config"
+	"antrea.io/antrea/pkg/agent/util/iptables"
+	"antrea.io/antrea/pkg/util/logdir"
 )
 
 func (d *agentDumper) DumpLog(basedir string) error {
