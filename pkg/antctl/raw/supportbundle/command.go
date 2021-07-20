@@ -74,6 +74,8 @@ var remoteControllerExample = strings.Trim(`
   $ antctl supportbundle
   Generate support bundle of the controller
   $ antctl supportbundle --controller-only
+  Generate support bundle of the controller and agents on all Nodes with the last 5 days's logs
+  $ antctl supportbundle --days 5
   Generate support bundles of agents on specific Nodes filtered by name list, no wildcard support
   $ antctl supportbundle node_a node_b node_c
   Generate support bundles of agents on specific Nodes filtered by names in a file (one Node name per line)
@@ -106,7 +108,7 @@ func init() {
 		Command.Flags().StringVarP(&option.labelSelector, "label-selector", "l", "", "selector (label query) to filter Nodes for agent bundles, supports '=', '==', and '!='.(e.g. -l key1=value1,key2=value2)")
 		Command.Flags().BoolVar(&option.controllerOnly, "controller-only", false, "only collect the support bundle of Antrea controller")
 		Command.Flags().StringVarP(&option.nodeListFile, "node-list-file", "f", "", "only collect the support bundle of specific nodes filtered by names in a file (one node name per line)")
-		Command.Flags().Uint32Var(&option.days, "days", 0, "only collect logs that are generated since specific days ago")
+		Command.Flags().Uint32Var(&option.days, "days", 0, "if > 0, only collect logs that are generated since specific days ago")
 		Command.RunE = controllerRemoteRunE
 	}
 }
