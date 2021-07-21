@@ -74,7 +74,7 @@ var remoteControllerExample = strings.Trim(`
   $ antctl supportbundle
   Generate support bundle of the controller
   $ antctl supportbundle --controller-only
-  Generate support bundle of the controller and agents on all Nodes with the last 5 days's logs
+  Generate support bundle of the controller and agents on all Nodes with only the logs generated during the last 5 days
   $ antctl supportbundle --days 5
   Generate support bundles of agents on specific Nodes filtered by name list, no wildcard support
   $ antctl supportbundle node_a node_b node_c
