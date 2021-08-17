@@ -33,7 +33,7 @@ const (
 // collecting them from a configurable path in the future.
 func (d *agentDumper) DumpLog(basedir string) error {
 	logDir := logdir.GetLogDir()
-	timeFilter := daysFilter(d.days)
+	timeFilter := timestampFilter(d.since)
 
 	if err := directoryCopy(d.fs, path.Join(basedir, "logs", "agent"), logDir, "rancher-wins-antrea-agent", timeFilter); err != nil {
 		return err

@@ -28,7 +28,7 @@ import (
 
 func (d *agentDumper) DumpLog(basedir string) error {
 	logDir := logdir.GetLogDir()
-	timeFilter := daysFilter(d.days)
+	timeFilter := timestampFilter(d.since)
 
 	if err := directoryCopy(d.fs, path.Join(basedir, "logs", "agent"), logDir, "antrea-agent", timeFilter); err != nil {
 		return err

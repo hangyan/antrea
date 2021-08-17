@@ -15,6 +15,7 @@
 package support
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +36,8 @@ import (
 	"antrea.io/antrea/pkg/ovs/ovsctl"
 	"antrea.io/antrea/pkg/querier"
 	"antrea.io/antrea/pkg/util/logdir"
+	"github.com/metakeule/fmtdate"
+	"github.com/xhit/go-str2duration/v2"
 )
 
 // AgentDumper is the interface for dumping runtime information of the agent. Its
@@ -105,19 +109,41 @@ func dumpNetworkPolicyResources(fs afero.Fs, executor exec.Interface, basedir st
 	return dumpAntctlGet(fs, executor, "addressgroups", basedir)
 }
 
-func daysFilter(days uint32) *time.Time {
+func timestampFilter(since string) *time.Time {
 	var timeFilter *time.Time
-	if days > 0 {
-		placeholder := time.Now().Add(-24 * time.Duration(days) * time.Hour)
-		timeFilter = &placeholder
+	if since != "" {
+		duration, _ := str2duration.ParseDuration(since)
+		start := time.Now().Add(-duration)
+		timeFilter = &start
 	}
 	return timeFilter
+
+}
+
+
+// parseTimeFromFileName parse time from log file name.
+// example log file format: <component>.<hostname>.<user>.log.<level>.<yyyymmdd>-<hhmmss>.1
+func parseTimeFromFileName(name string) (time.Time, error) {
+	ss := strings.Split(name, ".")
+	ts := ss[len(ss)-1]
+	return fmtdate.Parse("YYYYMMDD-hhmmss", ts)
+
+}
+
+func parseTimeFromLogLine(log string, year string) (time.Time, error) {
+	ss := strings.Split(log, ".")
+	if ss[0] == "" {
+		return time.Time{}, fmt.Errorf("log line is empty")
+	}
+	dateStr := year + ss[0][1:]
+	return fmtdate.Parse("YYYYMMDD hh:mm:ss", dateStr)
+
 }
 
 // directoryCopy copies files under the srcDir to the targetDir. Only files whose name matches
-// the prefixFilter will be copied. At the same time, if the timeFilter is set, only files
-// whose modTime is later than the timeFilter will be copied. Copied files will be located
-// under the same relative path.
+// the prefixFilter will be copied. If prefixFiler is "", no filter is performed. At the same time, if the timeFilter is set,
+// only files whose modTime is later than the timeFilter will be copied. If a file contains both older logs and matched logs, only
+// the matched logs will be copied. Copied files will be located under the same relative path.
 func directoryCopy(fs afero.Fs, targetDir string, srcDir string, prefixFilter string, timeFilter *time.Time) error {
 	err := fs.MkdirAll(targetDir, os.ModePerm)
 	if err != nil {
@@ -130,25 +156,55 @@ func directoryCopy(fs afero.Fs, targetDir string, srcDir string, prefixFilter st
 		if !info.Mode().IsRegular() {
 			return nil
 		}
-		if !strings.HasPrefix(info.Name(), prefixFilter) {
+		if prefixFilter != "" && !strings.HasPrefix(info.Name(), prefixFilter) {
 			return nil
 		}
+
 		if timeFilter != nil && info.ModTime().Before(*timeFilter) {
 			return nil
 		}
+
 		targetPath := path.Join(targetDir, info.Name())
 		targetFile, err := fs.Create(targetPath)
 		if err != nil {
 			return err
 		}
 		defer targetFile.Close()
+
 		srcFile, err := fs.Open(filePath)
 		if err != nil {
 			return err
 		}
 		defer srcFile.Close()
-		_, err = io.Copy(targetFile, srcFile)
-		return err
+
+		// ignore error here, copy the whole file
+		startTime, _ := parseTimeFromFileName(info.Name())
+
+		// process first matched file
+		if timeFilter != nil && startTime.Before(*timeFilter) {
+			data := ""
+			scanner := bufio.NewScanner(srcFile)
+			for scanner.Scan() {
+				// the size limit of single log line is 64k. marked it as known issue and fix it if
+				// error occurs
+				line := scanner.Text()
+				if data != "" {
+					data += line + "\n"
+				} else {
+					ts, err := parseTimeFromLogLine(line, strconv.Itoa(timeFilter.Year()))
+					if err == nil {
+						if !ts.Before(*timeFilter) {
+							data += line + "\n"
+						}
+					}
+				}
+			}
+			_, err = targetFile.WriteString(data)
+			return err
+		} else {
+			_, err = io.Copy(targetFile, srcFile)
+			return err
+		}
 	})
 }
 
@@ -166,7 +222,7 @@ type controllerDumper struct {
 	fs       afero.Fs
 	executor exec.Interface
 	cq       controllerquerier.ControllerQuerier
-	days     uint32
+	since    string
 }
 
 func (d *controllerDumper) DumpControllerInfo(basedir string) error {
@@ -179,18 +235,18 @@ func (d *controllerDumper) DumpNetworkPolicyResources(basedir string) error {
 
 func (d *controllerDumper) DumpLog(basedir string) error {
 	logDir := logdir.GetLogDir()
-	return directoryCopy(d.fs, path.Join(basedir, "logs", "controller"), logDir, "antrea-controller", daysFilter(d.days))
+	return directoryCopy(d.fs, path.Join(basedir, "logs", "controller"), logDir, "antrea-controller", timestampFilter(d.since))
 }
 
 func (d *controllerDumper) DumpHeapPprof(basedir string) error {
 	return DumpHeapPprof(d.fs, basedir)
 }
 
-func NewControllerDumper(fs afero.Fs, executor exec.Interface, days uint32) ControllerDumper {
+func NewControllerDumper(fs afero.Fs, executor exec.Interface, since string) ControllerDumper {
 	return &controllerDumper{
 		fs:       fs,
 		executor: executor,
-		days:     days,
+		since:    since,
 	}
 }
 
@@ -201,7 +257,7 @@ type agentDumper struct {
 	aq           agentquerier.AgentQuerier
 	npq          querier.AgentNetworkPolicyInfoQuerier
 	// days is for log filter
-	days uint32
+	since string
 }
 
 func (d *agentDumper) DumpAgentInfo(basedir string) error {
@@ -261,13 +317,13 @@ func (d *agentDumper) DumpOVSPorts(basedir string) error {
 	return writeFile(d.fs, filepath.Join(basedir, "ovsports"), "ports", []byte(strings.Join(portData, "\n")))
 }
 
-func NewAgentDumper(fs afero.Fs, executor exec.Interface, ovsCtlClient ovsctl.OVSCtlClient, aq agentquerier.AgentQuerier, npq querier.AgentNetworkPolicyInfoQuerier, days uint32) AgentDumper {
+func NewAgentDumper(fs afero.Fs, executor exec.Interface, ovsCtlClient ovsctl.OVSCtlClient, aq agentquerier.AgentQuerier, npq querier.AgentNetworkPolicyInfoQuerier, since string) AgentDumper {
 	return &agentDumper{
 		fs:           fs,
 		executor:     executor,
 		ovsCtlClient: ovsCtlClient,
 		aq:           aq,
 		npq:          npq,
-		days:         days,
+		since:        since,
 	}
 }
