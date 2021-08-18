@@ -78,6 +78,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-${{ env.go-cache-name }}-
     - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v2
       run: make golangci
     - name: Run golangci-lint for netpol
       working-directory: hack/netpol
