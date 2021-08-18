@@ -119,9 +119,8 @@ func fileCopy(fs afero.Fs, targetDir string, srcDir string, prefixFilter string)
 		if !info.Mode().IsRegular() {
 			return nil
 		}
-		if !strings.HasPrefix(info.Name(), prefixFilter) {
-			return nil
-		}
+
+		
 		targetPath := path.Join(targetDir, info.Name())
 		targetFile, err := fs.Create(targetPath)
 		if err != nil {
