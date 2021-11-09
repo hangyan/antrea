@@ -15,6 +15,7 @@
 package agent
 
 import (
+	"antrea.io/antrea/pkg/agent/util/ethtool"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -83,6 +84,7 @@ type Initializer struct {
 	ovsBridge       string
 	hostGateway     string // name of gateway port on the OVS bridge
 	mtu             int
+	txhwCsumOff bool
 	serviceCIDR     *net.IPNet // K8s Service ClusterIP CIDR
 	serviceCIDRv6   *net.IPNet // K8s Service ClusterIP CIDR in IPv6
 	networkConfig   *config.NetworkConfig
@@ -108,6 +110,7 @@ func NewInitializer(
 	ovsBridge string,
 	hostGateway string,
 	mtu int,
+	txhwCsumOff bool,
 	serviceCIDR *net.IPNet,
 	serviceCIDRv6 *net.IPNet,
 	networkConfig *config.NetworkConfig,
@@ -130,6 +133,7 @@ func NewInitializer(
 		ovsBridge:             ovsBridge,
 		hostGateway:           hostGateway,
 		mtu:                   mtu,
+		txhwCsumOff: txhwCsumOff,
 		serviceCIDR:           serviceCIDR,
 		serviceCIDRv6:         serviceCIDRv6,
 		networkConfig:         networkConfig,
@@ -572,6 +576,14 @@ func (i *Initializer) setupGatewayInterface() error {
 	klog.V(4).Infof("Setting gateway interface %s MTU to %d", i.hostGateway, i.nodeConfig.NodeMTU)
 
 	i.ovsBridgeClient.SetInterfaceMTU(i.hostGateway, i.nodeConfig.NodeMTU)
+
+	if i.nodeConfig.NodeTXHWCsumOff {
+		if err := ethtool.EthtoolTXHWCsumOff(i.hostGateway); err != nil {
+			return err
+		}
+		klog.V(4).Infof("disable hardware checksum offloading on %s", i.hostGateway)
+	}
+
 	if err := i.configureGatewayInterface(gatewayIface); err != nil {
 		return err
 	}
@@ -801,6 +813,7 @@ func (i *Initializer) initNodeLocalConfig() error {
 	}
 	i.nodeConfig.NodeMTU = mtu
 	klog.Infof("Setting Node MTU=%d", mtu)
+	i.nodeConfig.NodeTXHWCsumOff = i.txhwCsumOff
 
 	if i.networkConfig.TrafficEncapMode.IsNetworkPolicyOnly() {
 		return nil

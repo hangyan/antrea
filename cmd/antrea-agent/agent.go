@@ -179,6 +179,7 @@ func run(o *Options) error {
 		o.config.OVSBridge,
 		o.config.HostGateway,
 		o.config.DefaultMTU,
+		o.config.TXHWCsumOff,
 		serviceCIDRNet,
 		serviceCIDRNetv6,
 		networkConfig,

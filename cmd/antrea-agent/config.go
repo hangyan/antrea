@@ -74,6 +74,8 @@ type AgentConfig struct {
 	// If omitted, antrea-agent will discover the MTU of the Node's primary interface and
 	// also adjust MTU to accommodate for tunnel encapsulation overhead (if applicable).
 	DefaultMTU int `yaml:"defaultMTU,omitempty"`
+	// TXHWCsumOff TODO:
+	TXHWCsumOff bool `yaml:"txhwCsumOff,omitempty"`
 	// Mount location of the /proc directory. The default is "/host", which is appropriate when
 	// antrea-agent is run as part of the Antrea DaemonSet (and the host's /proc directory is mounted
 	// as /host/proc in the antrea-agent container). When running antrea-agent as a process,

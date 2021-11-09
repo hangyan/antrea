@@ -128,6 +128,9 @@ type NodeConfig struct {
 	// Auto discovery will use MTU value of the Node's primary interface.
 	// For Encap and Hybrid mode, Node MTU will be adjusted to account for encap header.
 	NodeMTU int
+
+	NodeTXHWCsumOff bool
+
 	// The config of the gateway interface on the OVS bridge.
 	GatewayConfig *GatewayConfig
 	// The config of the OVS bridge uplink interface. Only for Windows Node.
