@@ -16,10 +16,12 @@ package supportbundle
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	utilerror "k8s.io/apimachinery/pkg/util/errors"
 	"net"
 	"os"
 	"path"
@@ -46,6 +48,10 @@ import (
 	antrea "antrea.io/antrea/pkg/client/clientset/versioned"
 	"antrea.io/antrea/pkg/util/ip"
 	"antrea.io/antrea/pkg/util/k8s"
+
+
+	corev1 "k8s.io/api/core/v1"
+
 )
 
 const (
@@ -225,6 +231,9 @@ func requestAll(agentClients map[string]*rest.RESTClient, controllerClient *rest
 	)
 }
 
+
+
+
 func download(suffix, downloadPath string, client *rest.RESTClient, component string) error {
 	for {
 		var supportBundle systemv1beta1.SupportBundle
@@ -283,6 +292,8 @@ func writeFailedNodes(downloadPath string, nodes []string) error {
 	}
 	return nil
 }
+
+
 
 // downloadAll will download all supportBundles. preResults is the request results of node/controller supportBundle.
 // if err happens for some nodes or controller, the download step will be skipped for the failed nodes or the controller.
@@ -646,4 +657,81 @@ func processResults(resultMap map[string]error, dir string) error {
 	} else {
 		return err
 	}
+}
+
+// downloadLogsFromKubernetes will trying to download logs from kubernetes api for failed nodes and controller. Since
+// can't get any useful data for failed nodes, this function can provide valuable information for the cluster status.
+func downloadLogsFromKubernetes(k8sClient kubernetes.Interface, failedNodes []string, isControllerFail bool) error {
+	pods, err := k8sClient.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{
+		ResourceVersion: "0",
+		LabelSelector: "app=antrea",
+	})
+	if err != nil {
+		return err
+	}
+
+	failedNodesMap := make(map[string]struct{})
+	for _, node := range failedNodes {
+		failedNodesMap[node] = struct{}{}
+	}
+	matcher := func(name string) bool {
+		_, ok := failedNodesMap[name]
+		return ok
+	}
+
+	for _, pod := range pods.Items {
+		if pod.Labels["component"] == "antrea-controller" && isControllerFail {
+
+		}
+
+		if !matcher(pod.Spec.NodeName) {
+			continue
+		}
+
+	}
+}
+
+
+func downloadPodLogs(k8sClient kubernetes.Interface, namespace string, podName string, containers []string, dir string) error {
+	var errors []error
+	for _, container := range containers {
+		logOption := &corev1.PodLogOptions{
+			Container: container,
+		}
+		logs := k8sClient.CoreV1().Pods(namespace).GetLogs(podName, logOption)
+		logStream, err := logs.Stream(context.TODO())
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+		defer logStream.Close()
+
+		buf := new(bytes.Buffer)
+		_, err = io.Copy(buf, logStream)
+		if err != nil {
+			errors = append(errors, err)
+			continue
+		}
+		str := buf.String()
+		// TODO: os windows
+		podDir := dir + "/" + podName
+		err = os.Mkdir(podDir, 0755)
+		if err != nil {
+			errors = append(errors, err)
+			return utilerror.NewAggregate(errors)
+		}
+		fileName := path.Join(podDir, container + "logs")
+		f, err := os.Create(fileName)
+		if err != nil {
+			errors = append(errors, err)
+			return utilerror.NewAggregate(errors)
+		}
+		if _, err := io.Copy(f, logStream); err != nil {
+			return fmt.Errorf("error when downloading the support bundle: %w", err)
+		}
+
+	}
+
+	return nil
+
 }
