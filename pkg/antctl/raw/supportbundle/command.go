@@ -16,7 +16,6 @@ package supportbundle
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -49,9 +48,7 @@ import (
 	"antrea.io/antrea/pkg/util/ip"
 	"antrea.io/antrea/pkg/util/k8s"
 
-
 	corev1 "k8s.io/api/core/v1"
-
 )
 
 const (
@@ -231,9 +228,6 @@ func requestAll(agentClients map[string]*rest.RESTClient, controllerClient *rest
 	)
 }
 
-
-
-
 func download(suffix, downloadPath string, client *rest.RESTClient, component string) error {
 	for {
 		var supportBundle systemv1beta1.SupportBundle
@@ -292,8 +286,6 @@ func writeFailedNodes(downloadPath string, nodes []string) error {
 	}
 	return nil
 }
-
-
 
 // downloadAll will download all supportBundles. preResults is the request results of node/controller supportBundle.
 // if err happens for some nodes or controller, the download step will be skipped for the failed nodes or the controller.
@@ -544,6 +536,20 @@ func controllerRemoteRunE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create clientset: %w", err)
 	}
 
+	if err := os.MkdirAll(option.dir, 0700|os.ModeDir); err != nil {
+		return fmt.Errorf("error when creating output dir: %w", err)
+	}
+
+	f, err := os.Create(filepath.Join(option.dir, "clusterinfo"))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	err = getClusterInfo(f, k8sClientset)
+	if err != nil {
+		return err
+	}
+
 	var controllerClient *rest.RESTClient
 	var agentClients map[string]*rest.RESTClient
 
@@ -588,9 +594,6 @@ func controllerRemoteRunE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no matched Nodes found to collect agent bundles")
 	}
 
-	if err := os.MkdirAll(option.dir, 0700|os.ModeDir); err != nil {
-		return fmt.Errorf("error when creating output dir: %w", err)
-	}
 	amount := len(agentClients) * 2
 	if controllerClient != nil {
 		amount += 2
@@ -598,19 +601,10 @@ func controllerRemoteRunE(cmd *cobra.Command, args []string) error {
 	bar := barTmpl.Start(amount)
 	defer bar.Finish()
 	defer bar.Set("prefix", "Finish ")
-	f, err := os.Create(filepath.Join(option.dir, "clusterinfo"))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	err = getClusterInfo(f, k8sClientset)
-	if err != nil {
-		return err
-	}
 
 	results := requestAll(agentClients, controllerClient, bar)
 	results = downloadAll(agentClients, controllerClient, dir, bar, results)
-	return processResults(results, dir)
+	return processResults(k8sClientset, results, dir)
 }
 
 func genErrorMsg(resultMap map[string]error) string {
@@ -623,7 +617,7 @@ func genErrorMsg(resultMap map[string]error) string {
 
 // processResults will output the failed nodes and their reasons if any. If no data was collected,
 // error is returned, otherwise will return nil.
-func processResults(resultMap map[string]error, dir string) error {
+func processResults(k8sClient kubernetes.Interface, resultMap map[string]error, dir string) error {
 	resultStr := ""
 	var failedNodes []string
 	allFailed := true
@@ -639,7 +633,8 @@ func processResults(resultMap map[string]error, dir string) error {
 		}
 	}
 
-	if resultMap[""] != nil {
+	controllerFail := resultMap[""] != nil
+	if controllerFail {
 		fmt.Println("Controller Info Failed Reason: " + resultMap[""].Error())
 	}
 
@@ -652,6 +647,14 @@ func processResults(resultMap map[string]error, dir string) error {
 		err = writeFailedNodes(dir, failedNodes)
 	}
 
+	// download logs from kubernetes api
+	if failedNodes != nil || controllerFail {
+		err := downloadLogsFromKubernetes(k8sClient, failedNodes, controllerFail, dir)
+		if err != nil {
+			return err
+		}
+	}
+
 	if allFailed {
 		return fmt.Errorf("no data was collected: %s", genErrorMsg(resultMap))
 	} else {
@@ -661,10 +664,10 @@ func processResults(resultMap map[string]error, dir string) error {
 
 // downloadLogsFromKubernetes will trying to download logs from kubernetes api for failed nodes and controller. Since
 // can't get any useful data for failed nodes, this function can provide valuable information for the cluster status.
-func downloadLogsFromKubernetes(k8sClient kubernetes.Interface, failedNodes []string, isControllerFail bool) error {
+func downloadLogsFromKubernetes(k8sClient kubernetes.Interface, failedNodes []string, isControllerFail bool, dir string) error {
 	pods, err := k8sClient.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{
 		ResourceVersion: "0",
-		LabelSelector: "app=antrea",
+		LabelSelector:   "app=antrea",
 	})
 	if err != nil {
 		return err
@@ -679,24 +682,34 @@ func downloadLogsFromKubernetes(k8sClient kubernetes.Interface, failedNodes []st
 		return ok
 	}
 
+	var errors []error
+
 	for _, pod := range pods.Items {
 		if pod.Labels["component"] == "antrea-controller" && isControllerFail {
-
+			err := downloadPodLogs(k8sClient, "controller", pod.Namespace, pod.Name, []string{"antrea-controller"}, dir)
+			if err != nil {
+				errors = append(errors, err)
+			}
+			continue
 		}
 
 		if !matcher(pod.Spec.NodeName) {
 			continue
 		}
 
+		err := downloadPodLogs(k8sClient, "agent_"+pod.Spec.NodeName, pod.Namespace, pod.Name, []string{"antrea-agent", "antrea-ovs"}, dir)
+		if err != nil {
+			errors = append(errors, err)
+		}
 	}
+	return utilerror.NewAggregate(errors)
 }
 
-
-func downloadPodLogs(k8sClient kubernetes.Interface, namespace string, podName string, containers []string, dir string) error {
+func downloadPodLogs(k8sClient kubernetes.Interface, comp string, namespace string, podName string, containers []string, dir string) error {
 	var errors []error
-	for _, container := range containers {
+	for _, containerName := range containers {
 		logOption := &corev1.PodLogOptions{
-			Container: container,
+			Container: containerName,
 		}
 		logs := k8sClient.CoreV1().Pods(namespace).GetLogs(podName, logOption)
 		logStream, err := logs.Stream(context.TODO())
@@ -706,21 +719,20 @@ func downloadPodLogs(k8sClient kubernetes.Interface, namespace string, podName s
 		}
 		defer logStream.Close()
 
-		buf := new(bytes.Buffer)
-		_, err = io.Copy(buf, logStream)
-		if err != nil {
-			errors = append(errors, err)
-			continue
-		}
-		str := buf.String()
-		// TODO: os windows
-		podDir := dir + "/" + podName
-		err = os.Mkdir(podDir, 0755)
+		//buf := new(bytes.Buffer)
+		//_, err = io.Copy(buf, logStream)
+		//if err != nil {
+		//	errors = append(errors, err)
+		//	continue
+		//}
+		podLogDir := filepath.Join(dir, comp, "logs")
+
+		err = os.MkdirAll(podLogDir, 0755)
 		if err != nil {
 			errors = append(errors, err)
 			return utilerror.NewAggregate(errors)
 		}
-		fileName := path.Join(podDir, container + "logs")
+		fileName := filepath.Join(podLogDir, containerName+".log")
 		f, err := os.Create(fileName)
 		if err != nil {
 			errors = append(errors, err)
