@@ -124,6 +124,8 @@ type TraceflowSpec struct {
 	// Timeout specifies the timeout of the Traceflow in seconds. Defaults
 	// to 20 seconds if not set.
 	Timeout uint16 `json:"timeout,omitempty"`
+
+	Sample SampleConfig `json:"sampleConfig,omitempty"`
 }
 
 // Source describes the source spec of the traceflow.
@@ -177,6 +179,29 @@ type TransportHeader struct {
 	UDP  *UDPHeader             `json:"udp,omitempty" yaml:"udp,omitempty"`
 	TCP  *TCPHeader             `json:"tcp,omitempty" yaml:"tcp,omitempty"`
 }
+
+type SampleConfig struct {
+	 Type string `json:"type" yaml:"type"`
+     FirstNSampling FirstNSamplingConfig `json:"firstNSampling,omitempty" yaml:"fistNSampling,omitempty"`
+	 PacketNumberSampling PacketNumberSamplingConfig `json:"packetNumberSampling,omitempty'" yaml:"packetNumberSampling,omitempty'"`
+	 IntervalSampling IntervalSamplingConfig `json:"intervalSampling,omitempty" yaml:"intervalSampling,omitempty"`
+}
+
+// firsst N packets
+type FirstNSamplingConfig struct {
+	Number int `json:"number" yaml:"number"`
+}
+
+// 1 out of how many packets is sampled
+type PacketNumberSamplingConfig struct {
+	Count int `json:"count" yaml:"count"`
+}
+
+// at what interval packets are sampled...
+type IntervalSamplingConfig struct {
+	Rate int `json:"rate" yaml:"rate"`
+}
+
 
 // ICMPEchoRequestHeader describes spec of an ICMP echo request header.
 type ICMPEchoRequestHeader struct {
