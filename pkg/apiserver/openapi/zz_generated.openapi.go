@@ -126,6 +126,8 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"antrea.io/antrea/pkg/apis/crd/v1beta1.PeerNamespaces":                             schema_pkg_apis_crd_v1beta1_PeerNamespaces(ref),
 		"antrea.io/antrea/pkg/apis/crd/v1beta1.PeerService":                                schema_pkg_apis_crd_v1beta1_PeerService(ref),
 		"antrea.io/antrea/pkg/apis/crd/v1beta1.Rule":                                       schema_pkg_apis_crd_v1beta1_Rule(ref),
+		"antrea.io/antrea/pkg/apis/crd/v1beta1.Sampling":                                   schema_pkg_apis_crd_v1beta1_Sampling(ref),
+		"antrea.io/antrea/pkg/apis/crd/v1beta1.SamplingStatus":                             schema_pkg_apis_crd_v1beta1_SamplingStatus(ref),
 		"antrea.io/antrea/pkg/apis/crd/v1beta1.Source":                                     schema_pkg_apis_crd_v1beta1_Source(ref),
 		"antrea.io/antrea/pkg/apis/crd/v1beta1.TCPHeader":                                  schema_pkg_apis_crd_v1beta1_TCPHeader(ref),
 		"antrea.io/antrea/pkg/apis/crd/v1beta1.TLSProtocol":                                schema_pkg_apis_crd_v1beta1_TLSProtocol(ref),
@@ -5045,6 +5047,63 @@ func schema_pkg_apis_crd_v1beta1_Rule(ref common.ReferenceCallback) common.OpenA
 	}
 }
 
+func schema_pkg_apis_crd_v1beta1_Sampling(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "Sampling describes the spec of the sampling feature. For now we only support firstN but likely we will add 1 out of N methods for sampling.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"method": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"num": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Mum will represent the parameter for sampling method. Since we only support fistN and maybe 1ofN in the future, a a single parameter seems enough for the cases.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_crd_v1beta1_SamplingStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"numCapturedPackets": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"uid": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"packetsPath": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PacketsPath is an API path for users to access the sampling packets results.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func schema_pkg_apis_crd_v1beta1_Source(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -5393,11 +5452,18 @@ func schema_pkg_apis_crd_v1beta1_TraceflowSpec(ref common.ReferenceCallback) com
 							Format:      "int32",
 						},
 					},
+					"sampling": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sampling specifies the sampling methods for real traffic, which will collect actual packaget for user's further analysis.",
+							Default:     map[string]interface{}{},
+							Ref:         ref("antrea.io/antrea/pkg/apis/crd/v1beta1.Sampling"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"antrea.io/antrea/pkg/apis/crd/v1beta1.Destination", "antrea.io/antrea/pkg/apis/crd/v1beta1.Packet", "antrea.io/antrea/pkg/apis/crd/v1beta1.Source"},
+			"antrea.io/antrea/pkg/apis/crd/v1beta1.Destination", "antrea.io/antrea/pkg/apis/crd/v1beta1.Packet", "antrea.io/antrea/pkg/apis/crd/v1beta1.Sampling", "antrea.io/antrea/pkg/apis/crd/v1beta1.Source"},
 	}
 }
 
@@ -5455,11 +5521,18 @@ func schema_pkg_apis_crd_v1beta1_TraceflowStatus(ref common.ReferenceCallback) c
 							Ref:         ref("antrea.io/antrea/pkg/apis/crd/v1beta1.Packet"),
 						},
 					},
+					"sampling": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sampling contains the results from real traffic sampling",
+							Default:     map[string]interface{}{},
+							Ref:         ref("antrea.io/antrea/pkg/apis/crd/v1beta1.SamplingStatus"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"antrea.io/antrea/pkg/apis/crd/v1beta1.NodeResult", "antrea.io/antrea/pkg/apis/crd/v1beta1.Packet", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+			"antrea.io/antrea/pkg/apis/crd/v1beta1.NodeResult", "antrea.io/antrea/pkg/apis/crd/v1beta1.Packet", "antrea.io/antrea/pkg/apis/crd/v1beta1.SamplingStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
 	}
 }
 

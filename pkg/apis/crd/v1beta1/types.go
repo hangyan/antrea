@@ -70,6 +70,9 @@ const (
 	OVSDBConnectionUp AgentConditionType = "OVSDBConnectionUp"
 	// OpenflowConnectionUp is used to mark Openflow connection status.
 	OpenflowConnectionUp AgentConditionType = "OpenflowConnectionUp"
+
+	// FirstNSampling is a sampling method which will capture the first N packets from a traffic flow for sampling.
+	FirstNSampling SamplingMethod = "firstN"
 )
 
 type AgentCondition struct {
@@ -972,7 +975,23 @@ type TraceflowSpec struct {
 	// Timeout specifies the timeout of the Traceflow in seconds. Defaults
 	// to 20 seconds if not set.
 	Timeout int32 `json:"timeout,omitempty"`
+
+	// Sampling specifies the sampling methods for real traffic, which will collect actual packaget
+	// for user's further analysis.
+	Sampling Sampling `json:"sampling,omitempty"`
 }
+type SamplingMethod string
+
+
+// Sampling describes the spec of the sampling feature. For now we only support firstN but likely we will add 1 out of N
+// methods for sampling.
+type Sampling struct {
+	Method SamplingMethod `json:"method,omitempty"`
+	// Mum will represent the parameter for sampling method. Since we only support fistN and maybe 1ofN in the future, a
+	// a single parameter seems enough for the cases.
+	Num    int32          `json:"num,omitempty"`
+}
+
 
 // Source describes the source spec of the traceflow.
 type Source struct {
@@ -1078,7 +1097,19 @@ type TraceflowStatus struct {
 	Results []NodeResult `json:"results,omitempty"`
 	// CapturedPacket is the captured packet in live-traffic Traceflow.
 	CapturedPacket *Packet `json:"capturedPacket,omitempty"`
+
+	// Sampling contains the results from real traffic sampling
+	Sampling SamplingStatus `json:"sampling,omitempty"`
 }
+
+type SamplingStatus struct {
+	NumCapturedPackets int32  `json:"numCapturedPackets,omitempty"`
+	UID                string `json:"uid,omitempty"`
+	// PacketsPath is an API path for users to access the sampling packets results.
+	PacketsPath string `json:"packetsPath,omitempty"`
+}
+
+
 
 type NodeResult struct {
 	// Node is the node of the observation.
