@@ -57,6 +57,7 @@ type CapturedPacket struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	Sum      string       `json:"sum,omitempty"`
 	Status   PacketStatus `json:"status,omitempty"`
 	Size     uint32       `json:"size,omitempty"`
 	Filepath string       `json:"-"`

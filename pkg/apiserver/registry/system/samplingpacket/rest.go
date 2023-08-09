@@ -194,8 +194,9 @@ func (r *samplingPacketsREST) NamespaceScoped() bool {
 	return false
 }
 
-func (r *samplingPacketsREST) collect(ctx context.Context, dumpers ...func(string) error) (*systemv1beta1.SupportBundle, error) {
-	basedir, err := afero.TempDir(defaultFS, "", "bundle_tmp_")
+func (r *samplingPacketsREST) collect(ctx context.Context, dumpers ...func(string) error) (*systemv1beta1.CapturedPacket, error) {
+	// TODO: copy dir or refactor this
+	basedir, err := afero.TempDir(defaultFS, "", "packets_")
 	if err != nil {
 		return nil, fmt.Errorf("error when creating tempdir: %w", err)
 	}
@@ -205,7 +206,7 @@ func (r *samplingPacketsREST) collect(ctx context.Context, dumpers ...func(strin
 			return nil, err
 		}
 	}
-	outputFile, err := afero.TempFile(defaultFS, "", "bundle_*.tar.gz")
+	outputFile, err := afero.TempFile(defaultFS, "", "packets_*.tar.gz")
 	if err != nil {
 		return nil, fmt.Errorf("error when creating output tarfile: %w", err)
 	}
@@ -228,13 +229,13 @@ func (r *samplingPacketsREST) collect(ctx context.Context, dumpers ...func(strin
 	}
 	creationTime := metav1.Now()
 	deletionTime := metav1.NewTime(creationTime.Add(bundleExpireDuration))
-	return &systemv1beta1.SupportBundle{
+	return &systemv1beta1.CapturedPacket{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              r.mode,
 			CreationTimestamp: creationTime,
 			DeletionTimestamp: &deletionTime,
 		},
-		Status:   systemv1beta1.SupportBundleStatusCollected,
+		Status:   systemv1beta1.SamplingPacketStatusCollected,
 		Sum:      fmt.Sprintf("%x", hashSum),
 		Size:     uint32(fileSize),
 		Filepath: outputFile.Name(),
