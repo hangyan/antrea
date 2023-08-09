@@ -39,3 +39,25 @@ type SupportBundle struct {
 	Size     uint32       `json:"size,omitempty"`
 	Filepath string       `json:"-"`
 }
+
+type PacketStatus string
+
+const (
+	SamplingPacketStatusNone       PacketStatus = "None"
+	SamplingPacketStatusCollecting PacketStatus = "Collecting"
+	SamplingPacketStatusCollected  PacketStatus = "Collected"
+)
+
+// +genclient
+// +genclient:nonNamespaced
+// +genclient:onlyVerbs=get,create,delete
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type CapturedPacket struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Status   PacketStatus `json:"status,omitempty"`
+	Size     uint32       `json:"size,omitempty"`
+	Filepath string       `json:"-"`
+}
