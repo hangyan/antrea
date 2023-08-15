@@ -45,25 +45,23 @@ const (
 var (
 	// Declared as variables for testing.
 	defaultFS       = afero.NewOsFs()
-	defaultExecutor = exec.New()
-	newAgentDumper  = support.NewAgentDumper
 
 	clock clockutils.Clock = clockutils.RealClock{}
 )
 
 // NewControllerStorage creates a sampling storage for working on antrea controller.
 func NewControllerStorage() Storage {
-	bundle := &supportBundleREST{
+	bundle := &samplingPacketsREST{
 		mode: modeController,
-		cache: &systemv1beta1.SupportBundle{
+		cache: &systemv1beta1.CapturedPacket{
 			ObjectMeta: metav1.ObjectMeta{Name: modeController},
-			Status:     systemv1beta1.SupportBundleStatusNone,
+			Status:     systemv1beta1.SamplingPacketStatusNone,
 		},
 	}
 	return Storage{
 		Mode:          modeController,
-		SupportBundle: bundle,
-		Download:      &downloadREST{supportBundle: bundle},
+		SamplingPacket: bundle,
+		Download:      &downloadREST{capturedPacket: bundle},
 	}
 }
 
@@ -78,7 +76,7 @@ func NewAgentStorage() Storage {
 	return Storage{
 		Mode:          modeAgent,
 		SupportBundle: bundle,
-		Download:      &downloadREST{supportBundle: bundle},
+		Download:      &downloadREST{capturedPacket: bundle},
 	}
 }
 
@@ -125,17 +123,13 @@ func (r *samplingPacketsREST) Create(ctx context.Context, obj runtime.Object, _ 
 	r.cancelFunc = cancelFunc
 	go func() {
 		var err error
-		var b *systemv1beta1.SupportBundle
-		if r.mode == modeAgent {
-			b, err = r.collectAgent(ctx, since)
-		} else if r.mode == modeController {
-			b, err = r.collectController(ctx, since)
-		}
+		var b *systemv1beta1.CapturedPacket
+		b, err = r.collectAgent(ctx, since)
 		func() {
 			r.statusLocker.Lock()
 			defer r.statusLocker.Unlock()
 			if err != nil {
-				klog.Errorf("Error when collecting supportBundle: %v", err)
+				klog.Errorf("Error when collecting capturedPacket: %v", err)
 				r.cache.Status = systemv1beta1.SamplingPacketStatusNone
 				return
 			}
@@ -167,7 +161,7 @@ func (r *samplingPacketsREST) Get(_ context.Context, name string, _ *metav1.GetO
 	r.statusLocker.RLock()
 	defer r.statusLocker.RUnlock()
 	if r.cache.Name != name {
-		return nil, errors.NewNotFound(systemv1beta1.Resource("supportBundle"), name)
+		return nil, errors.NewNotFound(systemv1beta1.Resource("capturedPacket"), name)
 	}
 	return r.cache, nil
 }
@@ -176,7 +170,7 @@ func (r *samplingPacketsREST) Get(_ context.Context, name string, _ *metav1.GetO
 // collecting. It only allows querying the resource whose name is equal to the mode.
 func (r *samplingPacketsREST) Delete(_ context.Context, name string, _ rest.ValidateObjectFunc, _ *metav1.DeleteOptions) (runtime.Object, bool, error) {
 	if name != r.mode {
-		return nil, false, errors.NewNotFound(systemv1beta1.Resource("supportBundle"), name)
+		return nil, false, errors.NewNotFound(systemv1beta1.Resource("capturedPacket"), name)
 	}
 	r.statusLocker.Lock()
 	defer r.statusLocker.Unlock()
@@ -213,7 +207,7 @@ func (r *samplingPacketsREST) collect(ctx context.Context, dumpers ...func(strin
 	defer outputFile.Close()
 	hashSum, err := compress.PackDir(defaultFS, basedir, outputFile)
 	if err != nil {
-		return nil, fmt.Errorf("error when packaging supportBundle: %w", err)
+		return nil, fmt.Errorf("error when packaging capturedPacket: %w", err)
 	}
 
 	select {
@@ -242,31 +236,10 @@ func (r *samplingPacketsREST) collect(ctx context.Context, dumpers ...func(strin
 	}, nil
 }
 
-func (r *samplingPacketsREST) collectAgent(ctx context.Context, name string) (*systemv1beta1.SupportBundle, error) {
-	dumper := newAgentDumper(defaultFS, defaultExecutor, r.ovsCtlClient, r.aq, r.npq, since, r.v4Enabled, r.v6Enabled)
-	return r.collect(
-		ctx,
-		dumper.DumpLog,
-		dumper.DumpHostNetworkInfo,
-		dumper.DumpFlows,
-		dumper.DumpNetworkPolicyResources,
-		dumper.DumpAgentInfo,
-		dumper.DumpHeapPprof,
-		dumper.DumpOVSPorts,
-		dumper.DumpMemberlist,
-	)
+func (r *samplingPacketsREST) collectAgent(ctx context.Context, name string) (*systemv1beta1.CapturedPacket, error) {
+	return r.collect(ctx)
 }
 
-func (r *samplingPacketsREST) collectController(ctx context.Context, since string) (*systemv1beta1.SupportBundle, error) {
-	dumper := support.NewControllerDumper(defaultFS, defaultExecutor, since)
-	return r.collect(
-		ctx,
-		dumper.DumpLog,
-		dumper.DumpNetworkPolicyResources,
-		dumper.DumpControllerInfo,
-		dumper.DumpHeapPprof,
-	)
-}
 
 func (r *samplingPacketsREST) clean(ctx context.Context, bundlePath string, duration time.Duration) {
 	select {
@@ -278,10 +251,10 @@ func (r *samplingPacketsREST) clean(ctx context.Context, bundlePath string, dura
 			select { // check the context again in case of cancellation when acquiring the lock.
 			case <-ctx.Done():
 			default:
-				if r.cache.Status == systemv1beta1.SupportBundleStatusCollected {
-					r.cache = &systemv1beta1.SupportBundle{
+				if r.cache.Status == systemv1beta1.SamplingPacketStatusCollected {
+					r.cache = &systemv1beta1.CapturedPacket{
 						ObjectMeta: metav1.ObjectMeta{Name: r.mode},
-						Status:     systemv1beta1.SupportBundleStatusNone,
+						Status:     systemv1beta1.SamplingPacketStatusNone,
 					}
 				}
 			}
@@ -298,18 +271,18 @@ var (
 
 // downloadREST implements the REST for downloading the bundle.
 type downloadREST struct {
-	supportBundle *samplingPacketsREST
+	capturedPacket *samplingPacketsREST
 }
 
 func (d *downloadREST) New() runtime.Object {
-	return &systemv1beta1.SupportBundle{}
+	return &systemv1beta1.CapturedPacket{}
 }
 
 func (d *downloadREST) Destroy() {
 }
 
 func (d *downloadREST) Get(_ context.Context, _ string, _ *metav1.GetOptions) (runtime.Object, error) {
-	return &bundleStream{d.supportBundle.cache}, nil
+	return &bundleStream{d.capturedPacket.cache}, nil
 }
 
 func (d *downloadREST) ProducesMIMETypes(_ string) []string {
@@ -326,7 +299,7 @@ var (
 )
 
 type bundleStream struct {
-	cache *systemv1beta1.SupportBundle
+	cache *systemv1beta1.CapturedPacket
 }
 
 func (b *bundleStream) GetObjectKind() schema.ObjectKind {

@@ -183,10 +183,10 @@ func TestControllerStorage(t *testing.T) {
 	require.True(t, exist)
 
 	_, err = storage.SupportBundle.Get(context.TODO(), modeAgent, nil)
-	assert.Equal(t, errors.NewNotFound(system.Resource("supportBundle"), modeAgent), err)
+	assert.Equal(t, errors.NewNotFound(system.Resource("capturedPacket"), modeAgent), err)
 
 	_, deleted, err := storage.SupportBundle.Delete(context.TODO(), modeAgent, nil, nil)
-	assert.Equal(t, errors.NewNotFound(system.Resource("supportBundle"), modeAgent), err)
+	assert.Equal(t, errors.NewNotFound(system.Resource("capturedPacket"), modeAgent), err)
 	assert.False(t, deleted)
 
 	_, deleted, err = storage.SupportBundle.Delete(context.TODO(), modeController, nil, nil)
@@ -340,8 +340,8 @@ func TestAgentStorageFailure(t *testing.T) {
 	assert.Empty(t, collectedBundle.Size)
 
 	_, err = storage.SupportBundle.Get(ctx, modeController, nil)
-	assert.Equal(t, errors.NewNotFound(system.Resource("supportBundle"), modeController), err)
+	assert.Equal(t, errors.NewNotFound(system.Resource("capturedPacket"), modeController), err)
 	_, deleted, err := storage.SupportBundle.Delete(ctx, modeController, nil, nil)
-	assert.Equal(t, errors.NewNotFound(system.Resource("supportBundle"), modeController), err)
+	assert.Equal(t, errors.NewNotFound(system.Resource("capturedPacket"), modeController), err)
 	assert.False(t, deleted)
 }
