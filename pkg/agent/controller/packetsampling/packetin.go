@@ -18,10 +18,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"time"
 
-	"antrea.io/libOpenflow/openflow15"
 	"antrea.io/libOpenflow/protocol"
 	"antrea.io/libOpenflow/util"
 	"antrea.io/ofnet/ofctrl"
@@ -30,7 +28,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
-	"antrea.io/antrea/pkg/agent/openflow"
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	binding "antrea.io/antrea/pkg/ovs/openflow"
 )
@@ -39,7 +36,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	if !c.packetSamplingSynced() {
 		return errors.New("PacketSampling controller is not started")
 	}
-	oldTf, nodeResult, packet, samplingState, shouldSkip, err := c.parsePacketIn(pktIn)
+	oldPs, packet, samplingState, shouldSkip, err := c.parsePacketIn(pktIn)
 	if err != nil {
 		return fmt.Errorf("parsePacketIn error: %v", err)
 	}
@@ -49,14 +46,14 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 
 	// Retry when update CRD conflict which caused by multiple agents updating one CRD at same time.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		tf, err := c.traceflowInformer.Lister().Get(oldTf.Name)
+		tf, err := c.packetSamplingInformer.Lister().Get(oldPs.Name)
 		if err != nil {
-			return fmt.Errorf("get Traceflow failed: %w", err)
+			return fmt.Errorf("get packetsampling failed: %w", err)
 		}
 
 		if samplingState != nil {
 			shouldUpdate := samplingState.shouldSyncPackets && (packet != nil ||
-				samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == tf.Spec.Sampling.Num)
+				samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == tf.Spec.FirstNSamplingConfig.Number)
 			if !shouldUpdate {
 				return nil
 			}
@@ -64,19 +61,14 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 
 		update := tf.DeepCopy()
 		if samplingState != nil {
-			update.Status.Sampling.NumCapturedPackets = samplingState.numCapturedPackets
-		} else {
-			update.Status.Results = append(update.Status.Results, *nodeResult)
-		}
-		if packet != nil {
-			update.Status.CapturedPacket = packet
+			update.Status.NumCapturedPackets = samplingState.numCapturedPackets
 		}
 
-		_, err = c.traceflowClient.CrdV1alpha1().Traceflows().UpdateStatus(context.TODO(), update, v1.UpdateOptions{})
+		_, err = c.packetSamplingClient.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), update, v1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("update Traceflow failed: %w", err)
 		}
-		klog.InfoS("Updated Traceflow", "tf", klog.KObj(tf), "status", update.Status)
+		klog.InfoS("Updated packetsampling", "tf", klog.KObj(tf), "status", update.Status)
 		return nil
 	})
 	if err != nil {
@@ -105,9 +97,8 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 // 4. the sampling state of the Traceflow (on sampling mode),
 // 5. a flag indicating whether this packet should be skipped,
 // 6. unexpected errors.
-func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Traceflow,
+func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.PacketSampling,
 	_ *crdv1alpha1.Packet, _ *packetSamplingState, shouldSkip bool, _ error) {
-	matchers := pktIn.GetMatches()
 
 	// Get data plane tag.
 	// Directly read data plane tag from packet.
@@ -118,7 +109,6 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Trace
 	if err := etherData.UnmarshalBinary(pktIn.Data.(*util.Buffer).Bytes()); err != nil {
 		return nil, nil, nil, false, fmt.Errorf("failed to parse Ethernet packet from packet-in message: %v", err)
 	}
-
 
 	samplingState := packetSamplingState{}
 	c.runningPacketSamplingsMutex.Lock()
@@ -138,7 +128,7 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Trace
 	}
 	c.runningPacketSamplingsMutex.Unlock()
 	if !exists {
-		return nil, nil,, nil, false, fmt.Errorf("Traceflow for dataplane tag %d not found in cache", tag)
+		return nil, nil, nil, false, fmt.Errorf("Traceflow for dataplane tag %d not found in cache", tag)
 	}
 
 	var capturedPacket *crdv1alpha1.Packet
@@ -149,15 +139,12 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Trace
 
 	ps, err := c.packetSamplingLister.Get(psState.name)
 	if err != nil {
-		return nil, nil, nil, false, fmt.Errorf("failed to get Traceflow %s CRD: %v", tfState.name, err)
+		return nil, nil, nil, false, fmt.Errorf("failed to get Traceflow %s CRD: %v", psState.name, err)
 	}
 
 	return ps, capturedPacket, &samplingState, false, nil
 
 }
-
-
-
 
 func parseCapturedPacket(pktIn *ofctrl.PacketIn) *crdv1alpha1.Packet {
 	pkt, _ := binding.ParsePacketIn(pktIn)
@@ -179,4 +166,3 @@ func parseCapturedPacket(pktIn *ofctrl.PacketIn) *crdv1alpha1.Packet {
 	}
 	return &capturedPacket
 }
-

@@ -1,14 +1,14 @@
 package packetsampling
 
 import (
-	crdv1beta1 "antrea.io/antrea/pkg/apis/crd/v1beta1"
 	"context"
 	"errors"
+	"sync"
+	"time"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"sync"
-	"time"
 
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -246,12 +246,13 @@ func (c *Controller) syncPacketSampling(name string) error {
 	}
 	switch ps.Status.Phase {
 	case "":
-		err := c.startPacketSampling()
+		err = c.startPacketSampling()
 	case crdv1alpha1.PacketSamplingRunning:
-		err := c.checkPacketSamplingStatus(ps)
+		err = c.checkPacketSamplingStatus(ps)
 	case crdv1alpha1.PacketSamplingFailed:
 		c.deallocateTagForPS(ps)
 	}
+	return err
 }
 
 type packetSamplingUpdater struct {
@@ -260,7 +261,7 @@ type packetSamplingUpdater struct {
 	phase       *crdv1alpha1.PacketSamplingPhase
 	reason      *string
 	uid         *string
-	tag         *int8
+	tag         *uint8
 	packetsPath *string
 }
 
@@ -291,6 +292,11 @@ func (u *packetSamplingUpdater) PacketsPath(path string) *packetSamplingUpdater 
 	return u
 }
 
+func (u *packetSamplingUpdater) Tag(tag uint8) *packetSamplingUpdater {
+	u.tag = &tag
+	return u
+}
+
 func (u *packetSamplingUpdater) Update() error {
 	newPS := u.ps.DeepCopy()
 	if u.phase != nil {
@@ -301,12 +307,12 @@ func (u *packetSamplingUpdater) Update() error {
 		u.ps.Status.StartTime = &time
 	}
 	if u.tag != nil {
-		newPS.Status.DataplaneTag = *t.tag
+		newPS.Status.DataplaneTag = *u.tag
 	}
 	if u.reason != nil {
-		newPS.Status.Reason = *t.reason
+		newPS.Status.Reason = *u.reason
 	}
-	if t.packetsPath != nil {
+	if u.packetsPath != nil {
 		newPS.Status.PacketsPath = *u.packetsPath
 	}
 	_, err := u.controller.client.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), newPS, metav1.UpdateOptions{})
@@ -344,7 +350,7 @@ func checkPacketSamplingSucceeded(ps *crdv1alpha1.PacketSampling) bool {
 	return succeeded
 }
 
-func checkPacketSamplingTimeout(ps *crdv1beta1.Traceflow) bool {
+func checkPacketSamplingTimeout(ps *crdv1alpha1.PacketSampling) bool {
 	var timeout time.Duration
 	if ps.Spec.Timeout != 0 {
 		timeout = time.Duration(ps.Spec.Timeout) * time.Second
@@ -357,7 +363,7 @@ func checkPacketSamplingTimeout(ps *crdv1beta1.Traceflow) bool {
 	} else {
 		// a fallback that should not be needed in general since we are in the Running phase
 		// when upgrading Antrea from a previous version, the field would be empty
-		klog.V(2).InfoS("StartTime field in packetsampling Status should not be empty", "Traceflow", klog.KObj(tf))
+		klog.V(2).InfoS("StartTime field in PacketSampling Status should not be empty", "Traceflow", klog.KObj(ps))
 		startTime = ps.CreationTimestamp.Time
 	}
 	return startTime.Add(timeout).Before(time.Now())

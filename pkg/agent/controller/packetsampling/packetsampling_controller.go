@@ -236,7 +236,7 @@ func (c *Controller) cleanupPacketSampling(psName string) *packetSamplingState {
 	defer c.runningPacketSamplingsMutex.Unlock()
 
 	for tag, state := range c.runningPacketSamplings {
-		if state.name == ps.Name {
+		if state.name == psName {
 			delete(c.runningPacketSamplings, tag)
 			return state
 		}
@@ -246,7 +246,7 @@ func (c *Controller) cleanupPacketSampling(psName string) *packetSamplingState {
 
 func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	err := c.validatePacketSampling(ps)
-	def
+
 	func() {
 		if err != nil {
 			c.cleanupPacketSampling(ps.Name)
@@ -278,7 +278,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	podInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pod, ns)
 	isSender := !receiverOnly && len(podInterfaces) > 0
 
-	var packet, matchPacket *binding.Packet
+	var matchPacket *binding.Packet
 	var ofPort uint32
 
 	if len(podInterfaces) > 0 {
@@ -350,14 +350,6 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 
 func createPcapngFile(uid string) (*os.File, error) {
 	return os.Create(uidToPath(uid))
-}
-
-func deletePcapngFile(uid string) error {
-	return os.Remove(uidToPath(uid))
-}
-
-func uidToPath(uid string) string {
-	return path.Join(packetDirectory, uid+".pcapng")
 }
 
 func fileExists(uid string) (bool, error) {
@@ -496,7 +488,7 @@ func (c *Controller) syncPacketSampling(psName string) error {
 	ps, err := c.packetSamplingLister.Get(psName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			c.cleanupPakcetSampling(psName)
+			c.cleanupPacketSampling(psName)
 			return nil
 
 		}
@@ -517,5 +509,6 @@ func (c *Controller) syncPacketSampling(psName string) error {
 			}
 		}
 	}
+	return nil
 
 }

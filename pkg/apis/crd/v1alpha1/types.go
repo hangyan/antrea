@@ -943,10 +943,10 @@ const (
 )
 
 type FirstNSamplingConfig struct {
-	Number int `json:"number,omitempty"`
+	Number int32 `json:"number,omitempty"`
 }
 
-const DefaultPacketSamplingTimeout int32 = 60
+const DefaultPacketSamplingTimeout uint16 = 60
 
 type PacketSamplingPhase string
 
@@ -978,7 +978,7 @@ type PacketSampling struct {
 }
 
 type PacketSamplingSpec struct {
-	Timeout              int32                         `json:"timeout,omitempty"`
+	Timeout              uint16                        `json:"timeout,omitempty"`
 	Type                 PacketSamplingType            `json:"type,omitempty"`
 	FirstNSamplingConfig *FirstNSamplingConfig         `json:"firstNsamplingConfig,omitempty"`
 	Source               Source                        `json:"source,omitempty"`
