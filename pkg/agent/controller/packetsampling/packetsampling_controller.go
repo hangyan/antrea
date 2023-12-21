@@ -2,18 +2,25 @@ package packetsampling
 
 import (
 	"antrea.io/antrea/pkg/agent/util"
+	"antrea.io/antrea/pkg/apis/controlplane"
 	binding "antrea.io/antrea/pkg/ovs/openflow"
 	"antrea.io/libOpenflow/protocol"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/google/gopacket/layers"
+	"github.com/pkg/sftp"
+	"github.com/spf13/afero"
+	"golang.org/x/crypto/ssh"
+	"io"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"net"
+	"net/url"
 	"os"
 	"path"
 	"runtime"
@@ -41,6 +48,20 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type ProtocolType string
+
+const (
+	sftpProtocol ProtocolType = "sftp"
+
+	uploadToFileServerTries      = 5
+	uploadToFileServerRetryDelay = 5 * time.Second
+
+	secretKeyWithAPIKey      = "apikey"
+	secretKeyWithBearerToken = "token"
+	secretKeyWithUsername    = "username"
+	secretKeyWithPassword    = "password"
+)
+
 const (
 	controllerName               = "AntreaAgentPacketSamplingController"
 	resyncPeriod   time.Duration = 0
@@ -57,7 +78,10 @@ const (
 	packetDirectoryWindows     = "C:\\packetsampling\\packets"
 )
 
-var packetDirectory = getPacketDirectory()
+var (
+	packetDirectory = getPacketDirectory()
+	defaultFS       = afero.NewOsFs()
+)
 
 // TODO: refactor this part.
 func getPacketDirectory() string {
@@ -109,6 +133,8 @@ type Controller struct {
 
 	runningPacketSamplings map[uint8]*packetSamplingState
 	enableAntreaProxy      bool
+
+	sftpUploader uploader
 }
 
 func NewPacketSamplingController(
@@ -136,6 +162,7 @@ func NewPacketSamplingController(
 		serviceCIDR:            serviceCIDR,
 		queue:                  workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay), "packetsampling"),
 		runningPacketSamplings: make(map[uint8]*packetSamplingState),
+		sftpUploader:           &sftpUploader{},
 		enableAntreaProxy:      enableAntreaProxy,
 	}
 
@@ -556,4 +583,163 @@ func (c *Controller) syncPacketSampling(psName string) error {
 	}
 	return err
 
+}
+
+type uploader interface {
+	upload(addr string, path string, config *ssh.ClientConfig, tarGzFile io.Reader) error
+}
+
+type sftpUploader struct {
+}
+
+func (uploader *sftpUploader) upload(address string, path string, config *ssh.ClientConfig, tarGzFile io.Reader) error {
+	conn, err := ssh.Dial("tcp", address, config)
+	if err != nil {
+		return fmt.Errorf("error when connecting to fs server: %w", err)
+	}
+	sftpClient, err := sftp.NewClient(conn)
+	if err != nil {
+		return fmt.Errorf("error when setting up sftp client: %w", err)
+	}
+	defer func() {
+		if err := sftpClient.Close(); err != nil {
+			klog.ErrorS(err, "Error when closing sftp client")
+		}
+	}()
+	targetFile, err := sftpClient.Create(path)
+	if err != nil {
+		return fmt.Errorf("error when creating target file on remote: %v", err)
+	}
+	defer func() {
+		if err := targetFile.Close(); err != nil {
+			klog.ErrorS(err, "Error when closing target file on remote")
+		}
+	}()
+	if written, err := io.Copy(targetFile, tarGzFile); err != nil {
+		return fmt.Errorf("error when copying target file: %v, written: %d", err, written)
+	}
+	klog.InfoS("Successfully upload file to path", "filePath", path)
+	return nil
+}
+
+func (c *Controller) getUploaderByProtocol(protocol ProtocolType) (uploader, error) {
+	if protocol == sftpProtocol {
+		return c.sftpUploader, nil
+	}
+	return nil, fmt.Errorf("unsupported protocol %s", protocol)
+}
+
+func parseUploadUrl(uploadUrl string) (*url.URL, error) {
+	parsedURL, err := url.Parse(uploadUrl)
+	if err != nil {
+		parsedURL, err = url.Parse("sftp://" + uploadUrl)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if parsedURL.Scheme != "sftp" {
+		return nil, fmt.Errorf("not sftp protocol")
+	}
+	return parsedURL, nil
+}
+
+// parseBundleAuth returns the authentication from the Secret provided in BundleServerAuthConfiguration.
+// The authentication is stored in the Secret Data with a key decided by the AuthType, and encoded using base64.
+func (c *Controller) parseBundleAuth(authentication crdv1alpha1.BundleServerAuthConfiguration) (*controlplane.BundleServerAuthConfiguration, error) {
+	secretReference := authentication.AuthSecret
+	if secretReference == nil {
+		return nil, fmt.Errorf("authentication is not specified")
+	}
+	secret, err := c.kubeClient.CoreV1().Secrets(secretReference.Namespace).Get(context.TODO(), secretReference.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("unable to get Secret with name %s in Namespace %s: %v", secretReference.Name, secretReference.Namespace, err)
+	}
+	parseAuthValue := func(secretData map[string][]byte, key string) (string, error) {
+		authValue, found := secret.Data[key]
+		if !found {
+			return "", fmt.Errorf("not found authentication in Secret %s/%s with key %s", secretReference.Namespace, secretReference.Name, key)
+		}
+		return bytes.NewBuffer(authValue).String(), nil
+	}
+	switch authentication.AuthType {
+	case crdv1alpha1.APIKey:
+		value, err := parseAuthValue(secret.Data, secretKeyWithAPIKey)
+		if err != nil {
+			return nil, err
+		}
+		return &controlplane.BundleServerAuthConfiguration{
+			APIKey: value,
+		}, nil
+	case crdv1alpha1.BearerToken:
+		value, err := parseAuthValue(secret.Data, secretKeyWithBearerToken)
+		if err != nil {
+			return nil, err
+		}
+		return &controlplane.BundleServerAuthConfiguration{
+			BearerToken: value,
+		}, nil
+	case crdv1alpha1.BasicAuthentication:
+		username, err := parseAuthValue(secret.Data, secretKeyWithUsername)
+		if err != nil {
+			return nil, err
+		}
+		password, err := parseAuthValue(secret.Data, secretKeyWithPassword)
+		if err != nil {
+			return nil, err
+		}
+		return &controlplane.BundleServerAuthConfiguration{
+			BasicAuthentication: &controlplane.BasicAuthentication{
+				Username: username,
+				Password: password,
+			},
+		}, nil
+	}
+	return nil, fmt.Errorf("unsupported authentication type %s", authentication.AuthType)
+}
+
+func (c *Controller) uploadToFileServer(up uploader, psName string, parsedURL *url.URL, serverAuth *controlplane.BundleServerAuthConfiguration, tarGzFile io.Reader) error {
+	joinedPath := path.Join(parsedURL.Path, c.nodeConfig.Name+"_"+psName+".tar.gz")
+	cfg := &ssh.ClientConfig{
+		User: serverAuth.BasicAuthentication.Username,
+		Auth: []ssh.AuthMethod{ssh.Password(serverAuth.BasicAuthentication.Password)},
+		// #nosec G106: skip host key check here and users can specify their own checks if needed
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         time.Second,
+	}
+	return up.upload(parsedURL.Host, joinedPath, cfg, tarGzFile)
+}
+
+func (c *Controller) uploadPackets(ps *crdv1alpha1.PacketSampling, outputFile afero.File) error {
+	klog.V(2).InfoS("Uploading captured packets for packetsampling", "name", ps.Name)
+	uploader, err := c.getUploaderByProtocol(sftpProtocol)
+	if err != nil {
+		return fmt.Errorf("failed to upload support bundle while getting uploader: %v", err)
+	}
+	if _, err := outputFile.Seek(0, 0); err != nil {
+		return fmt.Errorf("failed to upload support bundle to file server while setting offset: %v", err)
+	}
+	// fileServer.URL should be like: 10.92.23.154:22/path or sftp://10.92.23.154:22/path
+	parsedURL, err := parseUploadUrl(ps.Spec.FileServer.URL)
+	if err != nil {
+		return fmt.Errorf("failed to upload packets while parsing upload URL: %v", err)
+	}
+	triesLeft := uploadToFileServerTries
+	var uploadErr error
+	authentication, err := c.parseBundleAuth(ps.Spec.Authentication)
+	if err != nil {
+		klog.ErrorS(err, "Failed to get authentication defined in the PacketSampling CR", "name", ps.Name, "authentication", ps.Spec.Authentication)
+		return err
+	}
+	for triesLeft > 0 {
+		if uploadErr = c.uploadToFileServer(uploader, ps.Name, parsedURL, authentication, outputFile); uploadErr == nil {
+			return nil
+		}
+		triesLeft--
+		if triesLeft == 0 {
+			return fmt.Errorf("failed to upload support bundle after %d attempts", uploadToFileServerTries)
+		}
+		klog.InfoS("Failed to upload support bundle", "UploadError", uploadErr, "TriesLeft", triesLeft)
+		time.Sleep(uploadToFileServerRetryDelay)
+	}
+	return nil
 }

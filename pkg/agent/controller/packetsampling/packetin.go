@@ -15,9 +15,11 @@
 package packetsampling
 
 import (
+	"antrea.io/antrea/pkg/util/compress"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/spf13/afero"
 	"time"
 
 	"antrea.io/libOpenflow/protocol"
@@ -46,20 +48,20 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 
 	// Retry when update CRD conflict which caused by multiple agents updating one CRD at same time.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		tf, err := c.packetSamplingInformer.Lister().Get(oldPs.Name)
+		ps, err := c.packetSamplingInformer.Lister().Get(oldPs.Name)
 		if err != nil {
 			return fmt.Errorf("get packetsampling failed: %w", err)
 		}
 
 		if samplingState != nil {
 			shouldUpdate := samplingState.shouldSyncPackets && (packet != nil ||
-				samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == tf.Spec.FirstNSamplingConfig.Number)
+				samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == ps.Spec.FirstNSamplingConfig.Number)
 			if !shouldUpdate {
 				return nil
 			}
 		}
 
-		update := tf.DeepCopy()
+		update := ps.DeepCopy()
 		if samplingState != nil {
 			update.Status.NumCapturedPackets = samplingState.numCapturedPackets
 		}
@@ -68,7 +70,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 		if err != nil {
 			return fmt.Errorf("update Traceflow failed: %w", err)
 		}
-		klog.InfoS("Updated packetsampling", "tf", klog.KObj(tf), "status", update.Status)
+		klog.InfoS("Updated packetsampling", "ps", klog.KObj(ps), "status", update.Status)
 		return nil
 	})
 	if err != nil {
@@ -86,17 +88,16 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 		if err != nil {
 			return fmt.Errorf("couldn't write packet: %w", err)
 		}
+
+		if samplingState.numCapturedPackets == oldPs.Spec.FirstNSamplingConfig.Number {
+			return c.compressAndUploadPackets(oldPs)
+		}
 	}
 	return nil
 }
 
 // parsePacketIn parses the packet-in message and returns
-// 1. the corresponding Traceflow CRD,
-// 2. the observed node result,
-// 3. the captured packet metadata (if applicable),
-// 4. the sampling state of the Traceflow (on sampling mode),
-// 5. a flag indicating whether this packet should be skipped,
-// 6. unexpected errors.
+// 1. the sampling state of the Traceflow (on sampling mode),
 func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.PacketSampling,
 	_ *crdv1alpha1.Packet, _ *packetSamplingState, shouldSkip bool, _ error) {
 
@@ -143,6 +144,31 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Packe
 	}
 
 	return ps, capturedPacket, &samplingState, false, nil
+
+}
+
+func (c *Controller) compressAndUploadPackets(ps *crdv1alpha1.PacketSampling) error {
+	outputFile, err := afero.TempFile(defaultFS, "", "packets_*.tar.gz")
+	if err != nil {
+		return fmt.Errorf("error when creating temp file: %w", err)
+	}
+
+	defer func() {
+		if err = outputFile.Close(); err != nil {
+			klog.ErrorS(err, "Error when closing output tar file")
+		}
+		if err = defaultFS.Remove(outputFile.Name()); err != nil {
+			klog.ErrorS(err, "Error when removing output tar file", "file", outputFile.Name())
+		}
+
+	}()
+
+	klog.V(2).InfoS("Compressing sampled packets", "name", ps.Name)
+	if _, err = compress.PackDir(defaultFS, packetDirectory, outputFile); err != nil {
+		return fmt.Errorf("error when packaging sampled packets: %w", err)
+	}
+
+	return c.uploadPackets(ps, outputFile)
 
 }
 
