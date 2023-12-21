@@ -135,6 +135,7 @@ func NewPacketSamplingController(
 		nodeConfig:             nodeConfig,
 		serviceCIDR:            serviceCIDR,
 		queue:                  workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay), "packetsampling"),
+		runningPacketSamplings: make(map[uint8]*packetSamplingState),
 		enableAntreaProxy:      enableAntreaProxy,
 	}
 
@@ -171,6 +172,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		cacheSyncs = append(cacheSyncs, c.serviceListerSynced)
 	}
 	if !cache.WaitForNamedCacheSync(controllerName, stopCh, cacheSyncs...) {
+		return
+	}
+
+	err := os.MkdirAll(packetDirectory, 0755)
+	if err != nil {
+		klog.ErrorS(err, "Couldn't create directory for storing packets")
 		return
 	}
 
