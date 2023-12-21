@@ -11,6 +11,8 @@ import (
 	"github.com/google/gopacket/layers"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	"net"
 	"os"
 	"path"
@@ -32,8 +34,6 @@ import (
 	crdlisters "antrea.io/antrea/pkg/client/listers/crd/v1alpha1"
 	"antrea.io/antrea/pkg/features"
 	"antrea.io/antrea/pkg/ovs/ovsconfig"
-	"antrea.io/antrea/pkg/querier"
-	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -64,7 +64,7 @@ func getPacketDirectory() string {
 	if runtime.GOOS == "windows" {
 		return packetDirectoryWindows
 	} else {
-		return getPacketDirectory()
+		return packetDirectoryUnix
 	}
 }
 
@@ -97,8 +97,7 @@ type Controller struct {
 	ovsBridgeClient      ovsconfig.OVSBridgeClient
 	ofClient             openflow.Client
 
-	networkPolicyQuerier querier.AgentNetworkPolicyInfoQuerier
-	egressQuerier        querier.EgressQuerier
+	crdClient clientsetversioned.Interface
 
 	interfaceStore interfacestore.InterfaceStore
 	networkConfig  *config.NetworkConfig
@@ -109,14 +108,34 @@ type Controller struct {
 	runningPacketSamplingsMutex sync.RWMutex
 
 	runningPacketSamplings map[uint8]*packetSamplingState
+	enableAntreaProxy      bool
 }
 
 func NewPacketSamplingController(
 	kubeClient clientset.Interface,
-	informerFactory informers.SharedInformerFactory,
-	packetSamplingInformer crdinformers.PacketSamplingInformer) *Controller {
+	crdClient clientsetversioned.Interface,
+	serviceInformer coreinformers.ServiceInformer,
+	packetSamplingInformer crdinformers.PacketSamplingInformer,
+	client openflow.Client,
+	interfaceStore interfacestore.InterfaceStore,
+	networkConfig *config.NetworkConfig,
+	nodeConfig *config.NodeConfig,
+	serviceCIDR *net.IPNet,
+	enableAntreaProxy bool,
+) *Controller {
 	c := &Controller{
-		kubeClient: kubeClient,
+		kubeClient:             kubeClient,
+		crdClient:              crdClient,
+		packetSamplingInformer: packetSamplingInformer,
+		packetSamplingLister:   packetSamplingInformer.Lister(),
+		packetSamplingSynced:   packetSamplingInformer.Informer().HasSynced,
+		ofClient:               client,
+		interfaceStore:         interfaceStore,
+		networkConfig:          networkConfig,
+		nodeConfig:             nodeConfig,
+		serviceCIDR:            serviceCIDR,
+		queue:                  workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay), "packetsampling"),
+		enableAntreaProxy:      enableAntreaProxy,
 	}
 
 	packetSamplingInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
@@ -125,11 +144,11 @@ func NewPacketSamplingController(
 		DeleteFunc: c.deletePacketSampling,
 	}, resyncPeriod)
 
-	c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInCategoryTF), c)
+	c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInCategoryPS), c)
 
 	if features.DefaultFeatureGate.Enabled(features.AntreaPolicy) {
-		c.serviceLister = informerFactory.Core().V1().Services().Lister()
-		c.serviceListerSynced = informerFactory.Core().V1().Services().Informer().HasSynced
+		c.serviceLister = serviceInformer.Lister()
+		c.serviceListerSynced = serviceInformer.Informer().HasSynced
 	}
 	return c
 
@@ -137,6 +156,28 @@ func NewPacketSamplingController(
 
 func (c *Controller) enqueuePacketSampling(ps *crdv1alpha1.PacketSampling) {
 	c.queue.Add(ps.Name)
+}
+
+// Run will create defaultWorkers workers (go routines) which will process the PacketSampling events from the
+// workqueue.
+func (c *Controller) Run(stopCh <-chan struct{}) {
+	defer c.queue.ShutDown()
+
+	klog.Infof("Starting %s", controllerName)
+	defer klog.Infof("Shutting down %s", controllerName)
+
+	cacheSyncs := []cache.InformerSynced{c.packetSamplingSynced}
+	if c.enableAntreaProxy {
+		cacheSyncs = append(cacheSyncs, c.serviceListerSynced)
+	}
+	if !cache.WaitForNamedCacheSync(controllerName, stopCh, cacheSyncs...) {
+		return
+	}
+
+	for i := 0; i < defaultWorkers; i++ {
+		go wait.Until(c.worker, time.Second, stopCh)
+	}
+	<-stopCh
 }
 
 func (c *Controller) addPacketSampling(obj interface{}) {
@@ -257,11 +298,6 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 
 	if err != nil {
 		return err
-	}
-
-	if ps.Spec.Source.Pod == "" && ps.Spec.Destination.Pod == "" {
-		klog.Errorf("PacketSampling %s has neither source or destination pod specified.", ps.Name)
-		return nil
 	}
 
 	receiverOnly := false
@@ -480,7 +516,6 @@ func (c *Controller) preparePacket(ps *crdv1alpha1.PacketSampling, intf *interfa
 
 func (c *Controller) syncPacketSampling(psName string) error {
 	startTime := time.Now()
-
 	defer func() {
 		klog.V(4).Infof("Finished syncing PacketSampling for %s. (%v)", psName, time.Since(startTime))
 	}()
@@ -490,7 +525,6 @@ func (c *Controller) syncPacketSampling(psName string) error {
 		if apierrors.IsNotFound(err) {
 			c.cleanupPacketSampling(psName)
 			return nil
-
 		}
 		return err
 	}
@@ -505,10 +539,14 @@ func (c *Controller) syncPacketSampling(psName string) error {
 			}
 			c.runningPacketSamplingsMutex.Unlock()
 			if start {
-				c.startPacketSampling(ps)
+				err = c.startPacketSampling(ps)
 			}
+		} else {
+			klog.Warningf("Invalid data plane tag %d for packet %s", ps.Status.DataplaneTag, ps.Name)
 		}
+	default:
+		c.cleanupPacketSampling(psName)
 	}
-	return nil
+	return err
 
 }
