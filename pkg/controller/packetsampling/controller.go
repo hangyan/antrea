@@ -3,6 +3,7 @@ package packetsampling
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -61,8 +62,8 @@ type Controller struct {
 
 	queue workqueue.RateLimitingInterface
 
-	runningPacketSamplingMutex sync.Mutex
-	runningPacketSamplings     map[uint8]string
+	runningPacketSamplingsMutex sync.Mutex
+	runningPacketSamplings      map[uint8]string
 }
 
 func NewPacketSamplingController(client versioned.Interface, podInformer coreinformers.PodInformer, packetSamplingInformer crdinformers.PacketSamplingInformer) *Controller {
@@ -74,6 +75,7 @@ func NewPacketSamplingController(client versioned.Interface, podInformer coreinf
 		packetSamplingLister:       packetSamplingInformer.Lister(),
 		packetSamplingListerSynced: packetSamplingInformer.Informer().HasSynced,
 		queue:                      workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay), "packetsampling"),
+		runningPacketSamplings:     make(map[uint8]string),
 	}
 
 	// add handlers
@@ -149,13 +151,13 @@ func (c *Controller) worker() {
 }
 
 func (c *Controller) repostPacketSampling() {
-	c.runningPacketSamplingMutex.Lock()
+	c.runningPacketSamplingsMutex.Lock()
 
 	pss := make([]string, 0, len(c.runningPacketSamplings))
 	for _, psName := range c.runningPacketSamplings {
 		pss = append(pss, psName)
 	}
-	c.runningPacketSamplingMutex.Unlock()
+	c.runningPacketSamplingsMutex.Unlock()
 
 	for _, psName := range pss {
 		c.queue.Add(psName)
@@ -163,8 +165,56 @@ func (c *Controller) repostPacketSampling() {
 
 }
 
-func (c *Controller) startPacketSampling() error {
-	return nil
+func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
+	tag, err := c.allocateTag(ps.Name)
+	if err != nil {
+		return err
+	}
+	if tag == 0 {
+		return nil
+	}
+	err = c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketSamplingRunning, "", tag)
+	if err != nil {
+		c.deallocateTag(ps.Name, tag)
+	}
+	return err
+}
+
+func (c *Controller) updatePacketSamplingStatus(ps *crdv1alpha1.PacketSampling, phase crdv1alpha1.PacketSamplingPhase, reason string, dataPlaneTag uint8) error {
+	update := ps.DeepCopy()
+	update.Status.Phase = phase
+	if phase == crdv1alpha1.PacketSamplingRunning && update.Status.StartTime == nil {
+		t := metav1.Now()
+		update.Status.StartTime = &t
+	}
+	update.Status.DataplaneTag = dataPlaneTag
+	if reason != "" {
+		update.Status.Reason = reason
+	}
+	_, err := c.client.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), update, metav1.UpdateOptions{})
+	return err
+}
+
+// Allocates a tag. If the PacketSampling request has been allocated with a tag
+// already, 0 is returned. If number of existing PacketSampling requests reaches
+// the upper limit, an error is returned.
+func (c *Controller) allocateTag(name string) (uint8, error) {
+	c.runningPacketSamplingsMutex.Lock()
+	defer c.runningPacketSamplingsMutex.Unlock()
+
+	for _, n := range c.runningPacketSamplings {
+		if n == name {
+			// The packetsampling request has been processed already.
+			return 0, nil
+		}
+	}
+	for i := minTagNum; i <= maxTagNum; i += tagStep {
+		if _, ok := c.runningPacketSamplings[i]; !ok {
+			c.runningPacketSamplings[i] = name
+			return i, nil
+		}
+	}
+	return 0, fmt.Errorf("number of on-going packetsampling operations already reached the upper limit: %d", maxTagNum)
 }
 
 func (c *Controller) processPacketSamplingItem() bool {
@@ -201,8 +251,8 @@ func (c *Controller) deallocateTagForPS(ps *crdv1alpha1.PacketSampling) {
 }
 
 func (c *Controller) deallocateTag(name string, tag uint8) {
-	c.runningPacketSamplingMutex.Lock()
-	defer c.runningPacketSamplingMutex.Unlock()
+	c.runningPacketSamplingsMutex.Lock()
+	defer c.runningPacketSamplingsMutex.Unlock()
 
 	if existing, ok := c.runningPacketSamplings[tag]; ok {
 		if name == existing {
@@ -217,8 +267,8 @@ func (c *Controller) occupyTag(ps *crdv1alpha1.PacketSampling) error {
 	if tag < minTagNum || tag > maxTagNum {
 		return errors.New("this packetsamping crd's data plane tag is out of range")
 	}
-	c.runningPacketSamplingMutex.Lock()
-	defer c.runningPacketSamplingMutex.Unlock()
+	c.runningPacketSamplingsMutex.Lock()
+	defer c.runningPacketSamplingsMutex.Unlock()
 
 	if exist, ok := c.runningPacketSamplings[tag]; ok {
 		if ps.Name == exist {
@@ -246,7 +296,7 @@ func (c *Controller) syncPacketSampling(name string) error {
 	}
 	switch ps.Status.Phase {
 	case "":
-		err = c.startPacketSampling()
+		err = c.startPacketSampling(ps)
 	case crdv1alpha1.PacketSamplingRunning:
 		err = c.checkPacketSamplingStatus(ps)
 	case crdv1alpha1.PacketSamplingFailed:

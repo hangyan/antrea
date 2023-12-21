@@ -980,7 +980,7 @@ type PacketSampling struct {
 type PacketSamplingSpec struct {
 	Timeout              uint16                        `json:"timeout,omitempty"`
 	Type                 PacketSamplingType            `json:"type,omitempty"`
-	FirstNSamplingConfig *FirstNSamplingConfig         `json:"firstNsamplingConfig,omitempty"`
+	FirstNSamplingConfig *FirstNSamplingConfig         `json:"firstNSamplingConfig,omitempty"`
 	Source               Source                        `json:"source,omitempty"`
 	Destination          Destination                   `json:"destination,omitempty"`
 	Packet               Packet                        `json:"packet,omitempty"`
