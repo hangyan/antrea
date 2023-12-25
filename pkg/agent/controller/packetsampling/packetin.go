@@ -40,7 +40,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	if !c.packetSamplingSynced() {
 		return errors.New("PacketSampling controller is not started")
 	}
-	oldPs, packet, samplingState, shouldSkip, err := c.parsePacketIn(pktIn)
+	oldPS, packet, samplingState, shouldSkip, err := c.parsePacketIn(pktIn)
 	if err != nil {
 		return fmt.Errorf("parsePacketIn error: %v", err)
 	}
@@ -50,7 +50,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 
 	// Retry when update CRD conflict which caused by multiple agents updating one CRD at same time.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		ps, err := c.packetSamplingInformer.Lister().Get(oldPs.Name)
+		ps, err := c.packetSamplingInformer.Lister().Get(oldPS.Name)
 		if err != nil {
 			return fmt.Errorf("get packetsampling failed: %w", err)
 		}
@@ -91,15 +91,15 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 			return fmt.Errorf("couldn't write packet: %w", err)
 		}
 
-		if samplingState.numCapturedPackets == oldPs.Spec.FirstNSamplingConfig.Number {
-			return c.compressAndUploadPackets(oldPs)
+		if samplingState.numCapturedPackets == oldPS.Spec.FirstNSamplingConfig.Number {
+			return c.compressAndUploadPackets(oldPS)
 		}
 	}
 	return nil
 }
 
 // parsePacketIn parses the packet-in message and returns
-// 1. the sampling state of the Traceflow (on sampling mode),
+// 1. the sampling state of the PacketSampling (on sampling mode),
 func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.PacketSampling,
 	_ *crdv1alpha1.Packet, _ *packetSamplingState, shouldSkip bool, _ error) {
 
@@ -114,10 +114,27 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Packe
 	}
 
 	samplingState := packetSamplingState{}
-	c.runningPacketSamplingsMutex.Lock()
+
+	if etherData.Ethertype == protocol.IPv4_MSG {
+		ipPacket, ok := etherData.Data.(*protocol.IPv4)
+		if !ok {
+			return nil, nil, nil, false, fmt.Errorf("invalid packetsampling ipv4 packet")
+
+		}
+		tag = ipPacket.DSCP
+	} else if etherData.Ethertype == protocol.IPv6_MSG {
+		ipv6Packet, ok := etherData.Data.(*protocol.IPv6)
+		if !ok {
+			return nil, nil, nil, false, fmt.Errorf("invalid packetsampling ipv6 packet")
+		}
+		tag = ipv6Packet.TrafficClass >> 2
+	} else {
+		return nil, nil, nil, false, fmt.Errorf("unsupported traceflow packet Ethertype: %d", etherData.Ethertype)
+	}
+
+	c.runningPacketSamplingsMutex.RLock()
 	psState, exists := c.runningPacketSamplings[tag]
 	if exists {
-
 		if psState.numCapturedPackets == psState.maxNumCapturedPackets {
 			c.runningPacketSamplingsMutex.Unlock()
 			return nil, nil, nil, true, nil

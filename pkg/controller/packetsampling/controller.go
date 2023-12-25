@@ -175,16 +175,8 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	if tag == 0 {
 		return nil
 	}
+
 	err = c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketSamplingRunning, "", tag)
-	if err != nil {
-		c.deallocateTag(ps.Name, tag)
-	}
-
-	updater := newPacketSamplingUpdater(ps, c).
-		Phase(crdv1alpha1.PacketSamplingRunning).
-		Tag(tag).UID(uuid.New().String())
-
-	err = updater.Update()
 	if err != nil {
 		c.deallocateTag(ps.Name, tag)
 	}
@@ -203,6 +195,11 @@ func (c *Controller) updatePacketSamplingStatus(ps *crdv1alpha1.PacketSampling, 
 	if reason != "" {
 		update.Status.Reason = reason
 	}
+
+	if update.Status.UID == "" {
+		update.Status.UID = uuid.New().String()
+	}
+
 	_, err := c.client.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), update, metav1.UpdateOptions{})
 	return err
 }
@@ -296,7 +293,7 @@ func (c *Controller) occupyTag(ps *crdv1alpha1.PacketSampling) error {
 func (c *Controller) syncPacketSampling(name string) error {
 	startTime := time.Now()
 	defer func() {
-		klog.V(4).Infof("Finished sync for packetsampling for %s.(%v)", name, time.Since(startTime))
+		klog.V(4).Infof("Finished sync for packetsampling %s.(%v)", name, time.Since(startTime))
 	}()
 
 	ps, err := c.packetSamplingLister.Get(name)
@@ -317,87 +314,18 @@ func (c *Controller) syncPacketSampling(name string) error {
 	return err
 }
 
-type packetSamplingUpdater struct {
-	ps          *crdv1alpha1.PacketSampling
-	controller  *Controller
-	phase       *crdv1alpha1.PacketSamplingPhase
-	reason      *string
-	uid         *string
-	tag         *uint8
-	packetsPath *string
-}
-
-func newPacketSamplingUpdater(base *crdv1alpha1.PacketSampling, c *Controller) *packetSamplingUpdater {
-	return &packetSamplingUpdater{
-		ps:         base,
-		controller: c,
-	}
-}
-
-func (u *packetSamplingUpdater) Phase(phase crdv1alpha1.PacketSamplingPhase) *packetSamplingUpdater {
-	u.phase = &phase
-	return u
-}
-
-func (u *packetSamplingUpdater) Reason(reason string) *packetSamplingUpdater {
-	u.reason = &reason
-	return u
-}
-
-func (u *packetSamplingUpdater) UID(uid string) *packetSamplingUpdater {
-	u.uid = &uid
-	return u
-}
-
-func (u *packetSamplingUpdater) PacketsPath(path string) *packetSamplingUpdater {
-	u.packetsPath = &path
-	return u
-}
-
-func (u *packetSamplingUpdater) Tag(tag uint8) *packetSamplingUpdater {
-	u.tag = &tag
-	return u
-}
-
-func (u *packetSamplingUpdater) Update() error {
-	newPS := u.ps.DeepCopy()
-	if u.phase != nil {
-		newPS.Status.Phase = *u.phase
-	}
-	if u.ps.Status.Phase == crdv1alpha1.PacketSamplingRunning && u.ps.Status.StartTime == nil {
-		curTime := metav1.Now()
-		u.ps.Status.StartTime = &curTime
-	}
-	if u.tag != nil {
-		newPS.Status.DataplaneTag = int8(*u.tag)
-	}
-	if u.reason != nil {
-		newPS.Status.Reason = *u.reason
-	}
-	if u.packetsPath != nil {
-		newPS.Status.PacketsPath = *u.packetsPath
-	}
-	_, err := u.controller.client.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), newPS, metav1.UpdateOptions{})
-	return err
-}
-
 // checkPacketSamplingStatus is only called for PacketSamplings in the Running phase
 func (c *Controller) checkPacketSamplingStatus(ps *crdv1alpha1.PacketSampling) error {
 	if checkPacketSamplingSucceeded(ps) {
 		c.deallocateTagForPS(ps)
-		return newPacketSamplingUpdater(ps, c).
-			Phase(crdv1alpha1.PacketSamplingSucceeded).
-			Tag(0).
-			Update()
+		klog.Infof("fk-1: check success")
+		return c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketSamplingSucceeded, "", 0)
 	}
 
 	if checkPacketSamplingTimeout(ps) {
 		c.deallocateTagForPS(ps)
-		return newPacketSamplingUpdater(ps, c).
-			Phase(crdv1alpha1.PacketSamplingFailed).
-			Reason(samplingTimeoutReason).
-			Tag(0).
-			Update()
+		klog.Infof("fk-1: check timeout")
+		return c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketSamplingFailed, samplingTimeoutReason, 0)
 	}
 
 	return nil

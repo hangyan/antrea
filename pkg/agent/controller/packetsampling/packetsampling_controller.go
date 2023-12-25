@@ -47,7 +47,6 @@ import (
 	clientsetversioned "antrea.io/antrea/pkg/client/clientset/versioned"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
 	crdlisters "antrea.io/antrea/pkg/client/listers/crd/v1alpha1"
-	"antrea.io/antrea/pkg/features"
 )
 
 type StorageProtocolType string
