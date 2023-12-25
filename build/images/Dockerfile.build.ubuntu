@@ -20,6 +20,8 @@ WORKDIR /antrea
 
 COPY go.mod /antrea/go.mod
 
+ENV GOPROXY https://goproxy.cn
+
 RUN go mod download
 
 COPY . /antrea

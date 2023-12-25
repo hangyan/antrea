@@ -269,7 +269,7 @@ func (c *Controller) processPacketSamplingItem() bool {
 }
 
 func (c *Controller) validatePacketSampling(ps *crdv1alpha1.PacketSampling) error {
-	if ps.Spec.Destination.Service != "" && !features.DefaultFeatureGate.Enabled(features.AntreaPolicy) {
+	if ps.Spec.Destination.Service != "" && !c.enableAntreaProxy {
 		return errors.New("using Service destination requires AntreaPolicy feature gate")
 	}
 
@@ -278,7 +278,7 @@ func (c *Controller) validatePacketSampling(ps *crdv1alpha1.PacketSampling) erro
 		if destIP == nil {
 			return fmt.Errorf("destination IP %s is not valid", ps.Spec.Destination.IP)
 		}
-		if !features.DefaultFeatureGate.Enabled(features.AntreaPolicy) && !c.serviceCIDR.Contains(destIP) {
+		if !c.enableAntreaProxy && c.serviceCIDR.Contains(destIP) {
 			return errors.New("using ClusterIP destination requires AntreaPolicy feature gate")
 		}
 
@@ -301,7 +301,17 @@ func (c *Controller) errorPacketSamplingCRD(ps *crdv1alpha1.PacketSampling, reas
 
 }
 
-func (c *Controller) cleanupPacketSampling(psName string) *packetSamplingState {
+func (c *Controller) cleanupPacketSampling(psName string) {
+	psState := c.deletePacketSamplingState(psName)
+	if psState != nil {
+		err := c.ofClient.UninstallPacketSamplingFlows(psState.tag)
+		if err != nil {
+			klog.Errorf("Error cleaning up flows for PacketSampling %s: %v", psName, err)
+		}
+	}
+}
+
+func (c *Controller) deletePacketSamplingState(psName string) *packetSamplingState {
 	c.runningPacketSamplingsMutex.Lock()
 	defer c.runningPacketSamplingsMutex.Unlock()
 
@@ -507,7 +517,7 @@ func (c *Controller) preparePacket(ps *crdv1alpha1.PacketSampling, intf *interfa
 		if ps.Spec.Packet.IPv6Header.NextHeader != nil {
 			packet.IPProto = uint8(*ps.Spec.Packet.IPv6Header.NextHeader)
 		}
-	} else {
+	} else if ps.Spec.Packet.IPHeader.Protocol != 0 {
 		packet.IPProto = uint8(ps.Spec.Packet.IPHeader.Protocol)
 	}
 
