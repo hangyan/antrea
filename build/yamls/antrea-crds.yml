@@ -4531,6 +4531,12 @@ spec:
                   type: string
                 startTime:
                   type: string
+                uid:
+                  type: string
+                numCapturedPackets:
+                  type: integer
+                packetsPath:
+                  type: string
 
       subresources:
         status: {}

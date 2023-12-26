@@ -1,24 +1,12 @@
 package packetsampling
 
 import (
-	"antrea.io/antrea/pkg/agent/util"
-	"antrea.io/antrea/pkg/apis/controlplane"
-	binding "antrea.io/antrea/pkg/ovs/openflow"
-	"antrea.io/libOpenflow/protocol"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/gopacket/layers"
-	"github.com/pkg/sftp"
-	"github.com/spf13/afero"
-	"golang.org/x/crypto/ssh"
 	"io"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
 	"net"
 	"net/url"
 	"os"
@@ -27,10 +15,30 @@ import (
 	"sync"
 	"time"
 
+	"antrea.io/libOpenflow/protocol"
+	"github.com/google/gopacket/layers"
+	"github.com/pkg/sftp"
+	"github.com/spf13/afero"
+	"golang.org/x/crypto/ssh"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+
+	"antrea.io/antrea/pkg/agent/util"
+	"antrea.io/antrea/pkg/apis/controlplane"
+	binding "antrea.io/antrea/pkg/ovs/openflow"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/google/gopacket/pcapgo"
 	"golang.org/x/time/rate"
+
+	clientset "k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
 
 	"antrea.io/antrea/pkg/agent/config"
 	"antrea.io/antrea/pkg/agent/interfacestore"
@@ -39,19 +47,12 @@ import (
 	clientsetversioned "antrea.io/antrea/pkg/client/clientset/versioned"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
 	crdlisters "antrea.io/antrea/pkg/client/listers/crd/v1alpha1"
-	"antrea.io/antrea/pkg/features"
-	"antrea.io/antrea/pkg/ovs/ovsconfig"
-	clientset "k8s.io/client-go/kubernetes"
-	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 )
 
-type ProtocolType string
+type StorageProtocolType string
 
 const (
-	sftpProtocol ProtocolType = "sftp"
+	sftpProtocol StorageProtocolType = "sftp"
 
 	uploadToFileServerTries      = 5
 	uploadToFileServerRetryDelay = 5 * time.Second
@@ -83,7 +84,6 @@ var (
 	defaultFS       = afero.NewOsFs()
 )
 
-// TODO: refactor this part.
 func getPacketDirectory() string {
 	if runtime.GOOS == "windows" {
 		return packetDirectoryWindows
@@ -93,46 +93,40 @@ func getPacketDirectory() string {
 }
 
 type packetSamplingState struct {
+	name                  string
+	tag                   uint8
 	shouldSyncPackets     bool
 	numCapturedPackets    int32
 	maxNumCapturedPackets int32
 	updateRateLimiter     *rate.Limiter
-
-	uid          string
-	pcapngFile   *os.File
-	pcapngWriter *pcapgo.NgWriter
-
-	name string
-	tag  uint8
-
-	receiverOnly bool
-	isSender     bool
+	uid                   string
+	pcapngFile            *os.File
+	pcapngWriter          *pcapgo.NgWriter
+	receiverOnly          bool
+	isSender              bool
 }
 
 type Controller struct {
 	kubeClient             clientset.Interface
+	crdClient              clientsetversioned.Interface
 	serviceLister          corelisters.ServiceLister
 	serviceListerSynced    cache.InformerSynced
 	packetSamplingClient   clientsetversioned.Interface
 	packetSamplingInformer crdinformers.PacketSamplingInformer
 	packetSamplingLister   crdlisters.PacketSamplingLister
+	packetSamplingSynced   cache.InformerSynced
 
-	packetSamplingSynced cache.InformerSynced
-	ovsBridgeClient      ovsconfig.OVSBridgeClient
-	ofClient             openflow.Client
-
-	crdClient clientsetversioned.Interface
-
+	ofClient       openflow.Client
 	interfaceStore interfacestore.InterfaceStore
 	networkConfig  *config.NetworkConfig
 	nodeConfig     *config.NodeConfig
 	serviceCIDR    *net.IPNet
+	queue          workqueue.RateLimitingInterface
 
-	queue                       workqueue.RateLimitingInterface
 	runningPacketSamplingsMutex sync.RWMutex
+	runningPacketSamplings      map[uint8]*packetSamplingState
 
-	runningPacketSamplings map[uint8]*packetSamplingState
-	enableAntreaProxy      bool
+	enableAntreaProxy bool
 
 	sftpUploader uploader
 }
@@ -174,7 +168,7 @@ func NewPacketSamplingController(
 
 	c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInCategoryPS), c)
 
-	if features.DefaultFeatureGate.Enabled(features.AntreaPolicy) {
+	if c.enableAntreaProxy {
 		c.serviceLister = serviceInformer.Lister()
 		c.serviceListerSynced = serviceInformer.Informer().HasSynced
 	}
@@ -194,17 +188,17 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	klog.Infof("Starting %s", controllerName)
 	defer klog.Infof("Shutting down %s", controllerName)
 
-	cacheSyncs := []cache.InformerSynced{c.packetSamplingSynced}
+	cacheSynced := []cache.InformerSynced{c.packetSamplingSynced}
 	if c.enableAntreaProxy {
-		cacheSyncs = append(cacheSyncs, c.serviceListerSynced)
+		cacheSynced = append(cacheSynced, c.serviceListerSynced)
 	}
-	if !cache.WaitForNamedCacheSync(controllerName, stopCh, cacheSyncs...) {
+	if !cache.WaitForNamedCacheSync(controllerName, stopCh, cacheSynced...) {
 		return
 	}
 
 	err := os.MkdirAll(packetDirectory, 0755)
 	if err != nil {
-		klog.ErrorS(err, "Couldn't create directory for storing packets")
+		klog.ErrorS(err, "Couldn't create directory for storing sampling packets")
 		return
 	}
 
@@ -274,7 +268,7 @@ func (c *Controller) processPacketSamplingItem() bool {
 }
 
 func (c *Controller) validatePacketSampling(ps *crdv1alpha1.PacketSampling) error {
-	if ps.Spec.Destination.Service != "" && !features.DefaultFeatureGate.Enabled(features.AntreaPolicy) {
+	if ps.Spec.Destination.Service != "" && !c.enableAntreaProxy {
 		return errors.New("using Service destination requires AntreaPolicy feature gate")
 	}
 
@@ -283,7 +277,7 @@ func (c *Controller) validatePacketSampling(ps *crdv1alpha1.PacketSampling) erro
 		if destIP == nil {
 			return fmt.Errorf("destination IP %s is not valid", ps.Spec.Destination.IP)
 		}
-		if !features.DefaultFeatureGate.Enabled(features.AntreaPolicy) && !c.serviceCIDR.Contains(destIP) {
+		if !c.enableAntreaProxy && c.serviceCIDR.Contains(destIP) {
 			return errors.New("using ClusterIP destination requires AntreaPolicy feature gate")
 		}
 
@@ -306,7 +300,17 @@ func (c *Controller) errorPacketSamplingCRD(ps *crdv1alpha1.PacketSampling, reas
 
 }
 
-func (c *Controller) cleanupPacketSampling(psName string) *packetSamplingState {
+func (c *Controller) cleanupPacketSampling(psName string) {
+	psState := c.deletePacketSamplingState(psName)
+	if psState != nil {
+		err := c.ofClient.UninstallPacketSamplingFlows(psState.tag)
+		if err != nil {
+			klog.Errorf("Error cleaning up flows for PacketSampling %s: %v", psName, err)
+		}
+	}
+}
+
+func (c *Controller) deletePacketSamplingState(psName string) *packetSamplingState {
 	c.runningPacketSamplingsMutex.Lock()
 	defer c.runningPacketSamplingsMutex.Unlock()
 
@@ -363,7 +367,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 
 	c.runningPacketSamplingsMutex.Lock()
 	psState := packetSamplingState{
-		name: ps.Name, tag: ps.Status.DataplaneTag,
+		name: ps.Name, tag: uint8(ps.Status.DataplaneTag),
 		receiverOnly: receiverOnly, isSender: isSender,
 	}
 
@@ -409,7 +413,6 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 
 	klog.V(2).Infof("installing flow entries to packetsampling %s", ps.Name)
 	timeout := ps.Spec.Timeout
-
 	if timeout == 0 {
 		timeout = crdv1alpha1.DefaultPacketSamplingTimeout
 	}
@@ -513,7 +516,7 @@ func (c *Controller) preparePacket(ps *crdv1alpha1.PacketSampling, intf *interfa
 		if ps.Spec.Packet.IPv6Header.NextHeader != nil {
 			packet.IPProto = uint8(*ps.Spec.Packet.IPv6Header.NextHeader)
 		}
-	} else {
+	} else if ps.Spec.Packet.IPHeader.Protocol != 0 {
 		packet.IPProto = uint8(ps.Spec.Packet.IPHeader.Protocol)
 	}
 
@@ -568,7 +571,7 @@ func (c *Controller) syncPacketSampling(psName string) error {
 		if ps.Status.DataplaneTag != 0 {
 			start := false
 			c.runningPacketSamplingsMutex.Lock()
-			if _, ok := c.runningPacketSamplings[ps.Status.DataplaneTag]; !ok {
+			if _, ok := c.runningPacketSamplings[uint8(ps.Status.DataplaneTag)]; !ok {
 				start = true
 			}
 			c.runningPacketSamplingsMutex.Unlock()
@@ -622,7 +625,7 @@ func (uploader *sftpUploader) upload(address string, path string, config *ssh.Cl
 	return nil
 }
 
-func (c *Controller) getUploaderByProtocol(protocol ProtocolType) (uploader, error) {
+func (c *Controller) getUploaderByProtocol(protocol StorageProtocolType) (uploader, error) {
 	if protocol == sftpProtocol {
 		return c.sftpUploader, nil
 	}
