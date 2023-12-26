@@ -20,10 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/afero"
-
-	"antrea.io/antrea/pkg/util/compress"
-
 	"antrea.io/libOpenflow/protocol"
 	"antrea.io/libOpenflow/util"
 	"antrea.io/ofnet/ofctrl"
@@ -33,14 +29,14 @@ import (
 	"k8s.io/klog/v2"
 
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
-	binding "antrea.io/antrea/pkg/ovs/openflow"
 )
 
 func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
+	klog.V(4).Infof("PacketIn for PacketSampling: %+v", pktIn.PacketIn)
 	if !c.packetSamplingSynced() {
 		return errors.New("PacketSampling controller is not started")
 	}
-	oldPS, packet, samplingState, shouldSkip, err := c.parsePacketIn(pktIn)
+	oldPS, samplingState, shouldSkip, err := c.parsePacketIn(pktIn)
 	if err != nil {
 		return fmt.Errorf("parsePacketIn error: %v", err)
 	}
@@ -56,8 +52,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 		}
 
 		if samplingState != nil {
-			shouldUpdate := samplingState.shouldSyncPackets && (packet != nil ||
-				samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == ps.Spec.FirstNSamplingConfig.Number)
+			shouldUpdate := samplingState.shouldSyncPackets && (samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == samplingState.maxNumCapturedPackets)
 			if !shouldUpdate {
 				return nil
 			}
@@ -68,7 +63,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 			update.Status.NumCapturedPackets = samplingState.numCapturedPackets
 		}
 
-		_, err = c.packetSamplingClient.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), update, v1.UpdateOptions{})
+		_, err = c.crdClient.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), update, v1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("update Traceflow failed: %w", err)
 		}
@@ -76,11 +71,12 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("Traceflow update error: %w", err)
+		return fmt.Errorf("PacketSampling update error: %w", err)
 	}
 
 	if samplingState != nil {
 		rawData := pktIn.Data.(*util.Buffer).Bytes()
+
 		ci := gopacket.CaptureInfo{
 			Timestamp:     time.Now(),
 			CaptureLength: len(rawData),
@@ -92,7 +88,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 		}
 
 		if samplingState.numCapturedPackets == oldPS.Spec.FirstNSamplingConfig.Number {
-			return c.compressAndUploadPackets(oldPS)
+			return c.uploadPacketsFile(oldPS)
 		}
 	}
 	return nil
@@ -100,8 +96,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 
 // parsePacketIn parses the packet-in message and returns
 // 1. the sampling state of the PacketSampling (on sampling mode),
-func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.PacketSampling,
-	_ *crdv1alpha1.Packet, _ *packetSamplingState, shouldSkip bool, _ error) {
+func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.PacketSampling, _ *packetSamplingState, shouldSkip bool, _ error) {
 
 	// Get data plane tag.
 	// Directly read data plane tag from packet.
@@ -110,7 +105,7 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Packe
 
 	etherData := new(protocol.Ethernet)
 	if err := etherData.UnmarshalBinary(pktIn.Data.(*util.Buffer).Bytes()); err != nil {
-		return nil, nil, nil, false, fmt.Errorf("failed to parse Ethernet packet from packet-in message: %v", err)
+		return nil, nil, false, fmt.Errorf("failed to parse Ethernet packet from packet-in message: %v", err)
 	}
 
 	samplingState := packetSamplingState{}
@@ -118,26 +113,26 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Packe
 	if etherData.Ethertype == protocol.IPv4_MSG {
 		ipPacket, ok := etherData.Data.(*protocol.IPv4)
 		if !ok {
-			return nil, nil, nil, false, fmt.Errorf("invalid packetsampling ipv4 packet")
+			return nil, nil, false, fmt.Errorf("invalid packetsampling ipv4 packet")
 
 		}
 		tag = ipPacket.DSCP
 	} else if etherData.Ethertype == protocol.IPv6_MSG {
 		ipv6Packet, ok := etherData.Data.(*protocol.IPv6)
 		if !ok {
-			return nil, nil, nil, false, fmt.Errorf("invalid packetsampling ipv6 packet")
+			return nil, nil, false, fmt.Errorf("invalid packetsampling ipv6 packet")
 		}
 		tag = ipv6Packet.TrafficClass >> 2
 	} else {
-		return nil, nil, nil, false, fmt.Errorf("unsupported traceflow packet Ethertype: %d", etherData.Ethertype)
+		return nil, nil, false, fmt.Errorf("unsupported traceflow packet Ethertype: %d", etherData.Ethertype)
 	}
 
-	c.runningPacketSamplingsMutex.RLock()
+	c.runningPacketSamplingsMutex.Lock()
 	psState, exists := c.runningPacketSamplings[tag]
 	if exists {
 		if psState.numCapturedPackets == psState.maxNumCapturedPackets {
 			c.runningPacketSamplingsMutex.Unlock()
-			return nil, nil, nil, true, nil
+			return nil, nil, true, nil
 		}
 		psState.numCapturedPackets++
 		if psState.numCapturedPackets == psState.maxNumCapturedPackets {
@@ -148,66 +143,24 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Packe
 	}
 	c.runningPacketSamplingsMutex.Unlock()
 	if !exists {
-		return nil, nil, nil, false, fmt.Errorf("Traceflow for dataplane tag %d not found in cache", tag)
-	}
-
-	var capturedPacket *crdv1alpha1.Packet
-
-	if samplingState.numCapturedPackets == 1 && samplingState.shouldSyncPackets {
-		capturedPacket = parseCapturedPacket(pktIn)
+		return nil, nil, false, fmt.Errorf("PacketSampling for dataplane tag %d not found in cache", tag)
 	}
 
 	ps, err := c.packetSamplingLister.Get(psState.name)
 	if err != nil {
-		return nil, nil, nil, false, fmt.Errorf("failed to get Traceflow %s CRD: %v", psState.name, err)
+		return nil, nil, false, fmt.Errorf("failed to get PacketSampling %s CRD: %v", psState.name, err)
 	}
 
-	return ps, capturedPacket, &samplingState, false, nil
+	klog.Infof("fk-1: cur: %d", samplingState.numCapturedPackets)
+	return ps, &samplingState, false, nil
 
 }
 
-func (c *Controller) compressAndUploadPackets(ps *crdv1alpha1.PacketSampling) error {
-	outputFile, err := afero.TempFile(defaultFS, "", "packets_*.tar.gz")
+func (c *Controller) uploadPacketsFile(ps *crdv1alpha1.PacketSampling) error {
+	name := uidToPath(ps.Status.UID)
+	file, err := defaultFS.Open(name)
 	if err != nil {
-		return fmt.Errorf("error when creating temp file: %w", err)
+		return err
 	}
-
-	defer func() {
-		if err = outputFile.Close(); err != nil {
-			klog.ErrorS(err, "Error when closing output tar file")
-		}
-		if err = defaultFS.Remove(outputFile.Name()); err != nil {
-			klog.ErrorS(err, "Error when removing output tar file", "file", outputFile.Name())
-		}
-
-	}()
-
-	klog.V(2).InfoS("Compressing sampled packets", "name", ps.Name)
-	if _, err = compress.PackDir(defaultFS, packetDirectory, outputFile); err != nil {
-		return fmt.Errorf("error when packaging sampled packets: %w", err)
-	}
-
-	return c.uploadPackets(ps, outputFile)
-
-}
-
-func parseCapturedPacket(pktIn *ofctrl.PacketIn) *crdv1alpha1.Packet {
-	pkt, _ := binding.ParsePacketIn(pktIn)
-	capturedPacket := crdv1alpha1.Packet{SrcIP: pkt.SourceIP.String(), DstIP: pkt.DestinationIP.String(), Length: pkt.IPLength}
-	if pkt.IsIPv6 {
-		ipProto := int32(pkt.IPProto)
-		capturedPacket.IPv6Header = &crdv1alpha1.IPv6Header{NextHeader: &ipProto, HopLimit: int32(pkt.TTL)}
-	} else {
-		capturedPacket.IPHeader.Protocol = int32(pkt.IPProto)
-		capturedPacket.IPHeader.TTL = int32(pkt.TTL)
-		capturedPacket.IPHeader.Flags = int32(pkt.IPFlags)
-	}
-	if pkt.IPProto == protocol.Type_TCP {
-		capturedPacket.TransportHeader.TCP = &crdv1alpha1.TCPHeader{SrcPort: int32(pkt.SourcePort), DstPort: int32(pkt.DestinationPort), Flags: int32(pkt.TCPFlags)}
-	} else if pkt.IPProto == protocol.Type_UDP {
-		capturedPacket.TransportHeader.UDP = &crdv1alpha1.UDPHeader{SrcPort: int32(pkt.SourcePort), DstPort: int32(pkt.DestinationPort)}
-	} else if pkt.IPProto == protocol.Type_ICMP || pkt.IPProto == protocol.Type_IPv6ICMP {
-		capturedPacket.TransportHeader.ICMP = &crdv1alpha1.ICMPEchoRequestHeader{ID: int32(pkt.ICMPEchoID), Sequence: int32(pkt.ICMPEchoSeq)}
-	}
-	return &capturedPacket
+	return c.uploadPackets(ps, file)
 }

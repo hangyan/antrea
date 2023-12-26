@@ -111,7 +111,6 @@ type Controller struct {
 	crdClient              clientsetversioned.Interface
 	serviceLister          corelisters.ServiceLister
 	serviceListerSynced    cache.InformerSynced
-	packetSamplingClient   clientsetversioned.Interface
 	packetSamplingInformer crdinformers.PacketSamplingInformer
 	packetSamplingLister   crdlisters.PacketSamplingLister
 	packetSamplingSynced   cache.InformerSynced
@@ -296,7 +295,7 @@ func (c *Controller) errorPacketSamplingCRD(ps *crdv1alpha1.PacketSampling, reas
 		Status: crdv1alpha1.PacketSamplingStatus{Phase: ps.Status.Phase, Reason: reason},
 	}
 	payloads, _ := json.Marshal(patchData)
-	return c.packetSamplingClient.CrdV1alpha1().PacketSamplings().Patch(context.TODO(), ps.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
+	return c.crdClient.CrdV1alpha1().PacketSamplings().Patch(context.TODO(), ps.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
 
 }
 
@@ -306,6 +305,15 @@ func (c *Controller) cleanupPacketSampling(psName string) {
 		err := c.ofClient.UninstallPacketSamplingFlows(psState.tag)
 		if err != nil {
 			klog.Errorf("Error cleaning up flows for PacketSampling %s: %v", psName, err)
+		}
+
+		err = psState.pcapngWriter.Flush()
+		if err != nil {
+			klog.Errorf("Error flushing pcapng file for PacketSampling %s: %v", psName, err)
+		}
+		err = psState.pcapngFile.Close()
+		if err != nil {
+			klog.Errorf("Error closing pcapng file for PacketSampling %s: %v", psName, err)
 		}
 	}
 }
@@ -369,6 +377,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	psState := packetSamplingState{
 		name: ps.Name, tag: uint8(ps.Status.DataplaneTag),
 		receiverOnly: receiverOnly, isSender: isSender,
+		maxNumCapturedPackets: ps.Spec.FirstNSamplingConfig.Number,
 	}
 
 	exists, err := fileExists(ps.Status.UID)
@@ -595,7 +604,7 @@ type uploader interface {
 type sftpUploader struct {
 }
 
-func (uploader *sftpUploader) upload(address string, path string, config *ssh.ClientConfig, tarGzFile io.Reader) error {
+func (uploader *sftpUploader) upload(address string, path string, config *ssh.ClientConfig, packetFile io.Reader) error {
 	conn, err := ssh.Dial("tcp", address, config)
 	if err != nil {
 		return fmt.Errorf("error when connecting to fs server: %w", err)
@@ -618,7 +627,7 @@ func (uploader *sftpUploader) upload(address string, path string, config *ssh.Cl
 			klog.ErrorS(err, "Error when closing target file on remote")
 		}
 	}()
-	if written, err := io.Copy(targetFile, tarGzFile); err != nil {
+	if written, err := io.Copy(targetFile, packetFile); err != nil {
 		return fmt.Errorf("error when copying target file: %v, written: %d", err, written)
 	}
 	klog.InfoS("Successfully upload file to path", "filePath", path)
@@ -700,8 +709,8 @@ func (c *Controller) parseBundleAuth(authentication crdv1alpha1.BundleServerAuth
 	return nil, fmt.Errorf("unsupported authentication type %s", authentication.AuthType)
 }
 
-func (c *Controller) uploadToFileServer(up uploader, psName string, parsedURL *url.URL, serverAuth *controlplane.BundleServerAuthConfiguration, tarGzFile io.Reader) error {
-	joinedPath := path.Join(parsedURL.Path, c.nodeConfig.Name+"_"+psName+".tar.gz")
+func (c *Controller) uploadToFileServer(up uploader, psName string, parsedURL *url.URL, serverAuth *controlplane.BundleServerAuthConfiguration, packetFile io.Reader) error {
+	joinedPath := path.Join(parsedURL.Path, c.nodeConfig.Name+"_"+psName+".pcapng")
 	cfg := &ssh.ClientConfig{
 		User: serverAuth.BasicAuthentication.Username,
 		Auth: []ssh.AuthMethod{ssh.Password(serverAuth.BasicAuthentication.Password)},
@@ -709,7 +718,7 @@ func (c *Controller) uploadToFileServer(up uploader, psName string, parsedURL *u
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         time.Second,
 	}
-	return up.upload(parsedURL.Host, joinedPath, cfg, tarGzFile)
+	return up.upload(parsedURL.Host, joinedPath, cfg, packetFile)
 }
 
 func (c *Controller) uploadPackets(ps *crdv1alpha1.PacketSampling, outputFile afero.File) error {
@@ -719,7 +728,7 @@ func (c *Controller) uploadPackets(ps *crdv1alpha1.PacketSampling, outputFile af
 		return fmt.Errorf("failed to upload support bundle while getting uploader: %v", err)
 	}
 	if _, err := outputFile.Seek(0, 0); err != nil {
-		return fmt.Errorf("failed to upload support bundle to file server while setting offset: %v", err)
+		return fmt.Errorf("failed to upload sampled packets to file server while setting offset: %v", err)
 	}
 	// fileServer.URL should be like: 10.92.23.154:22/path or sftp://10.92.23.154:22/path
 	parsedURL, err := parseUploadUrl(ps.Spec.FileServer.URL)
@@ -741,7 +750,7 @@ func (c *Controller) uploadPackets(ps *crdv1alpha1.PacketSampling, outputFile af
 		if triesLeft == 0 {
 			return fmt.Errorf("failed to upload support bundle after %d attempts", uploadToFileServerTries)
 		}
-		klog.InfoS("Failed to upload support bundle", "UploadError", uploadErr, "TriesLeft", triesLeft)
+		klog.InfoS("Failed to upload sampled packets", "UploadError", uploadErr, "TriesLeft", triesLeft)
 		time.Sleep(uploadToFileServerRetryDelay)
 	}
 	return nil

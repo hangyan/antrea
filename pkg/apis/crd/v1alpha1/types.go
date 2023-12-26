@@ -939,7 +939,7 @@ type TLSProtocol struct {
 type PacketSamplingType string
 
 const (
-	FirstNSampling PacketSamplingType = "FirstNsampling"
+	FirstNSampling PacketSamplingType = "FirstNSampling"
 )
 
 type FirstNSamplingConfig struct {

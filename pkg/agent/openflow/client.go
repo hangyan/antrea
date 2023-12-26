@@ -929,6 +929,7 @@ func (c *client) generatePipelines() {
 			c.enableTrafficControl)
 		c.activatedFeatures = append(c.activatedFeatures, c.featurePodConnectivity)
 		c.traceableFeatures = append(c.traceableFeatures, c.featurePodConnectivity)
+		c.sampleFeatures = append(c.sampleFeatures, c.featurePodConnectivity)
 
 		c.featureService = newFeatureService(c.cookieAllocator,
 			c.nodeIPChecker,
@@ -944,6 +945,7 @@ func (c *client) generatePipelines() {
 			c.connectUplinkToBridge)
 		c.activatedFeatures = append(c.activatedFeatures, c.featureService)
 		c.traceableFeatures = append(c.traceableFeatures, c.featureService)
+		c.sampleFeatures = append(c.sampleFeatures, c.featureService)
 	}
 
 	if c.nodeType == config.ExternalNode {
@@ -1237,11 +1239,9 @@ func (c *client) InstallPacketSamplingFlows(dataplaneTag uint8, receiverOnly boo
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
 	var flows []binding.Flow
 
-	for _, f := range c.traceableFeatures {
-		flows = append(flows, f.flowsToTrace(dataplaneTag,
+	for _, f := range c.sampleFeatures {
+		flows = append(flows, f.flowsToSample(dataplaneTag,
 			c.ovsMetersAreSupported,
-			true,
-			false,
 			receiverOnly,
 			packet,
 			ofPort,
@@ -1275,7 +1275,7 @@ func (c *client) UninstallTraceflowFlows(dataplaneTag uint8) error {
 
 func (c *client) UninstallPacketSamplingFlows(dataplaneTag uint8) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
-	return c.deleteFlows(c.featureTraceflow.cachedFlows, cacheKey)
+	return c.deleteFlows(c.featurePacketSampling.cachedFlows, cacheKey)
 }
 
 // setBasePacketOutBuilder sets base IP properties of a packetOutBuilder which can have more packet data added.

@@ -336,3 +336,12 @@ type traceableFeature interface {
 		ofPort uint32,
 		timeoutSeconds uint16) []binding.Flow
 }
+
+type sampleFeature interface {
+	flowsToSample(dataplaneTag uint8,
+		ovsMetersAreSupported,
+		receiverOnly bool,
+		packet *binding.Packet,
+		ofPort uint32,
+		timeoutSeconds uint16) []binding.Flow
+}
