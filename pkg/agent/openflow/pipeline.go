@@ -999,10 +999,10 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 	} else {
 		var flowBuilder binding.FlowBuilder
 		if !receiverOnly {
-			flowBuilder = ConntrackStateTable.ofTable.BuildFlow(priorityLow).
+			flowBuilder = ConntrackStateTable.ofTable.BuildFlow(priorityHigh).
 				Cookie(cookieID).
 				MatchInPort(ofPort).
-				MatchCTStateNew(true).
+				//MatchCTStateNew(true).
 				MatchCTStateTrk(true).
 				Action().LoadIPDSCP(dataplaneTag).
 				SetHardTimeout(timeout).
@@ -1013,7 +1013,7 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 		} else {
 			flowBuilder = L2ForwardingCalcTable.ofTable.BuildFlow(priorityHigh).
 				Cookie(cookieID).
-				MatchCTStateNew(true).
+				//MatchCTStateNew(true).
 				MatchCTStateTrk(true).
 				MatchDstMAC(packet.DestinationMAC).
 				Action().LoadToRegField(TargetOFPortField, ofPort).
