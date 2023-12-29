@@ -966,8 +966,33 @@ func (f *featureService) snatConntrackFlows() []binding.Flow {
 	return flows
 }
 
+func matchTransportHeader(packet *binding.Packet, flowBuilder binding.FlowBuilder) {
+	// Match transport header
+	switch packet.IPProto {
+	case protocol.Type_ICMP:
+		flowBuilder = flowBuilder.MatchProtocol(binding.ProtocolICMP)
+	case protocol.Type_IPv6ICMP:
+		flowBuilder = flowBuilder.MatchProtocol(binding.ProtocolICMPv6)
+	case protocol.Type_TCP:
+		if packet.IsIPv6 {
+			flowBuilder = flowBuilder.MatchProtocol(binding.ProtocolTCPv6)
+		} else {
+			flowBuilder = flowBuilder.MatchProtocol(binding.ProtocolTCP)
+		}
+	case protocol.Type_UDP:
+		if packet.IsIPv6 {
+			flowBuilder = flowBuilder.MatchProtocol(binding.ProtocolUDPv6)
+		} else {
+			flowBuilder = flowBuilder.MatchProtocol(binding.ProtocolUDP)
+		}
+	default:
+		flowBuilder = flowBuilder.MatchIPProtocolValue(packet.IsIPv6, packet.IPProto)
+	}
+}
+
 func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 	ovsMetersAreSupported,
+	senderOnly bool,
 	receiverOnly bool,
 	packet *binding.Packet,
 	ofPort uint32,
@@ -1007,8 +1032,10 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 				Action().LoadIPDSCP(dataplaneTag).
 				SetHardTimeout(timeout).
 				Action().GotoStage(stagePreRouting)
-			if packet.DestinationIP != nil {
-				flowBuilder = flowBuilder.MatchDstIP(packet.DestinationIP)
+			if !senderOnly {
+				if packet.DestinationIP != nil {
+					flowBuilder = flowBuilder.MatchDstIP(packet.DestinationIP)
+				}
 			}
 		} else {
 			flowBuilder = L2ForwardingCalcTable.ofTable.BuildFlow(priorityHigh).
@@ -1025,6 +1052,28 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 				flowBuilder = flowBuilder.MatchSrcIP(packet.SourceIP)
 			}
 		}
+
+		// for sender only case, capture the tracked packets.
+		if senderOnly {
+			for _, ipProtocol := range f.ipProtocols {
+				tmpFlowBuilder := ConntrackStateTable.ofTable.BuildFlow(priorityHigh).
+					Cookie(cookieID).
+					MatchInPort(ofPort).
+					MatchProtocol(ipProtocol).
+					MatchCTMark(ServiceCTMark).
+					MatchCTStateNew(false).
+					MatchCTStateTrk(true).
+					Action().LoadRegMark(RewriteMACRegMark).
+					Action().LoadIPDSCP(dataplaneTag).
+					SetHardTimeout(timeout).
+					Action().GotoStage(stageEgressSecurity)
+				matchTransportHeader(packet, tmpFlowBuilder)
+				flows = append(flows, tmpFlowBuilder.Done())
+
+			}
+
+		}
+
 		// Match transport header
 		switch packet.IPProto {
 		case protocol.Type_ICMP:
@@ -1055,6 +1104,7 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 			}
 		}
 		flows = append(flows, flowBuilder.Done())
+
 	}
 	// Clear the loaded DSCP bits before output.
 	ifLiveTraffic := func(fb binding.FlowBuilder) binding.FlowBuilder {
@@ -1339,6 +1389,7 @@ func (f *featurePodConnectivity) flowsToTrace(dataplaneTag uint8,
 // flowsToTrace is used to generate flows for Traceflow in featureService.
 func (f *featureService) flowsToSample(dataplaneTag uint8,
 	ovsMetersAreSupported,
+	senderOnly bool,
 	receiverOnly bool,
 	packet *binding.Packet,
 	ofPort uint32,

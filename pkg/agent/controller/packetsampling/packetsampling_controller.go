@@ -347,12 +347,14 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	}
 
 	receiverOnly := false
+	senderOnly := true
 	var pod, ns string
 	if ps.Spec.Source.Pod != "" {
 		pod = ps.Spec.Source.Pod
 		ns = ps.Spec.Source.Namespace
 	} else {
 		receiverOnly = true
+		senderOnly = false
 		pod = ps.Spec.Destination.Pod
 		ns = ps.Spec.Destination.Namespace
 	}
@@ -425,7 +427,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	if timeout == 0 {
 		timeout = crdv1alpha1.DefaultPacketSamplingTimeout
 	}
-	err = c.ofClient.InstallPacketSamplingFlows(psState.tag, receiverOnly, matchPacket, ofPort, timeout)
+	err = c.ofClient.InstallPacketSamplingFlows(psState.tag, senderOnly, receiverOnly, matchPacket, ofPort, timeout)
 	return err
 
 }

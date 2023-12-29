@@ -235,7 +235,7 @@ type Client interface {
 	// InstallTraceflowFlows installs flows for a Traceflow request.
 	InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedOnly, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error
 
-	InstallPacketSamplingFlows(dataplaneTag uint8, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error
+	InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly bool, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error
 
 	// UninstallTraceflowFlows uninstalls flows for a Traceflow request.
 	UninstallTraceflowFlows(dataplaneTag uint8) error
@@ -1235,13 +1235,14 @@ func (c *client) SendTraceflowPacket(dataplaneTag uint8, packet *binding.Packet,
 	return c.bridge.SendPacketOut(packetOutObj)
 }
 
-func (c *client) InstallPacketSamplingFlows(dataplaneTag uint8, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
+func (c *client) InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
 	var flows []binding.Flow
 
 	for _, f := range c.sampleFeatures {
 		flows = append(flows, f.flowsToSample(dataplaneTag,
 			c.ovsMetersAreSupported,
+			senderOnly,
 			receiverOnly,
 			packet,
 			ofPort,

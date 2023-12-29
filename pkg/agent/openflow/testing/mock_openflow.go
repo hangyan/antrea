@@ -406,17 +406,17 @@ func (mr *MockClientMockRecorder) InstallNodeFlows(arg0, arg1, arg2, arg3, arg4 
 }
 
 // InstallPacketSamplingFlows mocks base method.
-func (m *MockClient) InstallPacketSamplingFlows(arg0 byte, arg1 bool, arg2 *openflow.Packet, arg3 uint32, arg4 uint16) error {
+func (m *MockClient) InstallPacketSamplingFlows(arg0 byte, arg1, arg2 bool, arg3 *openflow.Packet, arg4 uint32, arg5 uint16) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallPacketSamplingFlows", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "InstallPacketSamplingFlows", arg0, arg1, arg2, arg3, arg4, arg5)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // InstallPacketSamplingFlows indicates an expected call of InstallPacketSamplingFlows.
-func (mr *MockClientMockRecorder) InstallPacketSamplingFlows(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
+func (mr *MockClientMockRecorder) InstallPacketSamplingFlows(arg0, arg1, arg2, arg3, arg4, arg5 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallPacketSamplingFlows", reflect.TypeOf((*MockClient)(nil).InstallPacketSamplingFlows), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallPacketSamplingFlows", reflect.TypeOf((*MockClient)(nil).InstallPacketSamplingFlows), arg0, arg1, arg2, arg3, arg4, arg5)
 }
 
 // InstallPodFlows mocks base method.

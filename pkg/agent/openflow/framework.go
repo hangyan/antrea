@@ -340,6 +340,7 @@ type traceableFeature interface {
 type sampleFeature interface {
 	flowsToSample(dataplaneTag uint8,
 		ovsMetersAreSupported,
+		senderOnly bool,
 		receiverOnly bool,
 		packet *binding.Packet,
 		ofPort uint32,
