@@ -1,4 +1,4 @@
-// Copyright 2023 Antrea Authors
+// Copyright 2024 Antrea Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -417,6 +417,20 @@ func (m *MockClient) InstallNodeFlows(arg0 string, arg1 map[*net.IPNet]net.IP, a
 func (mr *MockClientMockRecorder) InstallNodeFlows(arg0, arg1, arg2, arg3, arg4 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallNodeFlows", reflect.TypeOf((*MockClient)(nil).InstallNodeFlows), arg0, arg1, arg2, arg3, arg4)
+}
+
+// InstallPacketSamplingFlows mocks base method.
+func (m *MockClient) InstallPacketSamplingFlows(arg0 byte, arg1, arg2 bool, arg3 *openflow.Packet, arg4 []openflow.Packet, arg5 uint32, arg6 uint16) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InstallPacketSamplingFlows", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InstallPacketSamplingFlows indicates an expected call of InstallPacketSamplingFlows.
+func (mr *MockClientMockRecorder) InstallPacketSamplingFlows(arg0, arg1, arg2, arg3, arg4, arg5, arg6 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallPacketSamplingFlows", reflect.TypeOf((*MockClient)(nil).InstallPacketSamplingFlows), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }
 
 // InstallPodFlows mocks base method.
@@ -957,6 +971,20 @@ func (m *MockClient) UninstallNodeFlows(arg0 string) error {
 func (mr *MockClientMockRecorder) UninstallNodeFlows(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UninstallNodeFlows", reflect.TypeOf((*MockClient)(nil).UninstallNodeFlows), arg0)
+}
+
+// UninstallPacketSamplingFlows mocks base method.
+func (m *MockClient) UninstallPacketSamplingFlows(arg0 byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UninstallPacketSamplingFlows", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UninstallPacketSamplingFlows indicates an expected call of UninstallPacketSamplingFlows.
+func (mr *MockClientMockRecorder) UninstallPacketSamplingFlows(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UninstallPacketSamplingFlows", reflect.TypeOf((*MockClient)(nil).UninstallPacketSamplingFlows), arg0)
 }
 
 // UninstallPodFlows mocks base method.

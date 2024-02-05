@@ -196,7 +196,8 @@ clientCAFile: ""
 # -- To explicitly enable or disable a FeatureGate and bypass the Antrea
 # defaults, add an entry to the dictionary with the FeatureGate's name as the
 # key and a boolean as the value.
-featureGates: {}
+featureGates:
+  PacketSampling: true
 
 secondaryNetwork:
   # -- Configuration of OVS bridges for secondary network. At the moment, at
