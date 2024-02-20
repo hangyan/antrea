@@ -1108,15 +1108,14 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 		}
 
 	}
-	// Clear the loaded DSCP bits before output.
-	ifLiveTraffic := func(fb binding.FlowBuilder) binding.FlowBuilder {
+
+	clearDSCP := func(fb binding.FlowBuilder) binding.FlowBuilder {
 		return fb.Action().LoadIPDSCP(0).
 			Action().OutputToRegField(TargetOFPortField)
 
 	}
 
-	// Do not send to controller if captures only dropped packet.
-	ifDroppedOnly := func(fb binding.FlowBuilder) binding.FlowBuilder {
+	checkMeter := func(fb binding.FlowBuilder) binding.FlowBuilder {
 		if ovsMetersAreSupported {
 			fb = fb.Action().Meter(PacketInMeterIDTF)
 		}
@@ -1125,7 +1124,8 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 		return fb
 	}
 
-	// This generates Traceflow specific flows that outputs traceflow non-hairpin packets to OVS port and Antrea Agent after
+	// This generates Traceflow specific flows that outputs sampling
+	// non-hairpin packets to OVS port and Antrea Agent after
 	// L2 forwarding calculation.
 	for _, ipProtocol := range f.ipProtocols {
 		if f.networkConfig.TrafficEncapMode.SupportsEncap() {
@@ -1138,7 +1138,7 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 				MatchIPDSCP(dataplaneTag).
 				SetHardTimeout(timeout).
 				Action().OutputToRegField(TargetOFPortField)
-			fb = ifDroppedOnly(fb)
+			fb = checkMeter(fb)
 			flows = append(flows, fb.Done())
 			// For injected packets, only SendToController if output port is local gateway. In encapMode, a Traceflow
 			// packet going out of the gateway port (i.e. exiting the overlay) essentially means that the Traceflow
@@ -1150,8 +1150,8 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 				MatchRegMark(OutputToOFPortRegMark).
 				MatchIPDSCP(dataplaneTag).
 				SetHardTimeout(timeout)
-			fb = ifDroppedOnly(fb)
-			fb = ifLiveTraffic(fb)
+			fb = checkMeter(fb)
+			fb = clearDSCP(fb)
 			flows = append(flows, fb.Done())
 		} else {
 			// SendToController and Output if output port is local gateway. Unlike in encapMode, inter-Node Pod-to-Pod
@@ -1164,7 +1164,7 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 				MatchIPDSCP(dataplaneTag).
 				SetHardTimeout(timeout).
 				Action().OutputToRegField(TargetOFPortField)
-			fb = ifDroppedOnly(fb)
+			fb = checkMeter(fb)
 			flows = append(flows, fb.Done())
 		}
 		// Only SendToController if output port is local gateway and destination IP is gateway.
@@ -1178,8 +1178,8 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 				MatchRegMark(OutputToOFPortRegMark).
 				MatchIPDSCP(dataplaneTag).
 				SetHardTimeout(timeout)
-			fb = ifDroppedOnly(fb)
-			fb = ifLiveTraffic(fb)
+			fb = checkMeter(fb)
+			fb = clearDSCP(fb)
 			flows = append(flows, fb.Done())
 		}
 		// Only SendToController if output port is Pod port.
@@ -1189,8 +1189,8 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 			MatchRegMark(OutputToOFPortRegMark).
 			MatchIPDSCP(dataplaneTag).
 			SetHardTimeout(timeout)
-		fb = ifDroppedOnly(fb)
-		fb = ifLiveTraffic(fb)
+		fb = checkMeter(fb)
+		fb = clearDSCP(fb)
 		flows = append(flows, fb.Done())
 	}
 
