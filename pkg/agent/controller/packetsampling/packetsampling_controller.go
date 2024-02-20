@@ -344,7 +344,7 @@ func (c *Controller) deletePacketSamplingState(psName string) *packetSamplingSta
 func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	err := c.validatePacketSampling(ps)
 
-	func() {
+	defer func() {
 		if err != nil {
 			c.cleanupPacketSampling(ps.Name)
 			c.errorPacketSamplingCRD(ps, fmt.Sprintf("Node: %s, error:%+v", c.nodeConfig.Name, err))
@@ -374,12 +374,12 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	podInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pod, ns)
 	isSender := !receiverOnly && len(podInterfaces) > 0
 
-	var matchPacket *binding.Packet
+	var packet, matchPacket *binding.Packet
 	var endpointPackets []binding.Packet
 	var ofPort uint32
 
 	if len(podInterfaces) > 0 {
-		packet, err := c.preparePacket(ps, podInterfaces[0], receiverOnly)
+		packet, err = c.preparePacket(ps, podInterfaces[0], receiverOnly)
 		if err != nil {
 			return err
 		}

@@ -23,14 +23,15 @@ var (
 	psBusyboxPodName            = "busybox"
 	mixProtoServerPodName       = "mix-proto-server"
 	serverPort            int32 = 8080
+	nonExistPodName             = "non-existing-pod"
 )
 
 type psTestCase struct {
-	name            string
-	ps              *crdv1alpha1.PacketSampling
-	expectedPhase   crdv1alpha1.PacketSamplingPhase
-	expectedReasons []string
-	expectedNum     int32
+	name           string
+	ps             *crdv1alpha1.PacketSampling
+	expectedPhase  crdv1alpha1.PacketSamplingPhase
+	expectedReason string
+	expectedNum    int32
 	// required IP version, skip if not match, default is 0 (no restrict)
 	ipVersion int
 	// Source Pod to run ping for live-traffic PacketSampling.
@@ -100,7 +101,7 @@ func testPacketSamplingIntraNode(t *testing.T, data *TestData) {
 	}
 	node1 := nodeName(nodeIdx)
 
-	node1Pods, _, node1CleanupFn := createTestAgnhostPods(t, data, 2, data.testNamespace, node1)
+	node1Pods, _, node1CleanupFn := createTestAgnhostPods(t, data, 3, data.testNamespace, node1)
 	defer node1CleanupFn()
 	err := data.createNginxPodOnNode(psNginxPodName, data.testNamespace, node1, false)
 	require.NoError(t, err)
@@ -108,6 +109,7 @@ func testPacketSamplingIntraNode(t *testing.T, data *TestData) {
 
 	err = data.createUDPAndTCPServerPod(mixProtoServerPodName, data.testNamespace, serverPodPort, node1)
 	require.NoError(t, err)
+	// dstPodIPs := waitForPodIPs(t, data, []PodInfo{{mixProtoServerPodName, getOSString(), node1, data.testNamespace}})
 	defer deletePodWrapper(t, data, data.testNamespace, mixProtoServerPodName)
 
 	err = data.createBusyboxPodOnNode(psBusyboxPodName, data.testNamespace, node1, false)
@@ -125,7 +127,7 @@ func testPacketSamplingIntraNode(t *testing.T, data *TestData) {
 			srcPod:    psBusyboxPodName,
 			ps: &crdv1alpha1.PacketSampling{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, node1Pods[0], data.testNamespace, node1Pods[1])),
+					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, psBusyboxPodName, data.testNamespace, psNginxPodName)),
 				},
 				Spec: crdv1alpha1.PacketSamplingSpec{
 					Source: crdv1alpha1.Source{
@@ -171,7 +173,7 @@ func testPacketSamplingIntraNode(t *testing.T, data *TestData) {
 			srcPod:    psBusyboxPodName,
 			ps: &crdv1alpha1.PacketSampling{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, node1Pods[0], data.testNamespace, node1Pods[1])),
+					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, psBusyboxPodName, data.testNamespace, mixProtoServerPodName)),
 				},
 				Spec: crdv1alpha1.PacketSamplingSpec{
 					Source: crdv1alpha1.Source{
@@ -183,7 +185,8 @@ func testPacketSamplingIntraNode(t *testing.T, data *TestData) {
 						Pod:       mixProtoServerPodName,
 					},
 
-					Type: crdv1alpha1.FirstNSampling,
+					Type:    crdv1alpha1.FirstNSampling,
+					Timeout: 300,
 					FirstNSamplingConfig: &crdv1alpha1.FirstNSamplingConfig{
 						Number: 5,
 					},
@@ -203,7 +206,7 @@ func testPacketSamplingIntraNode(t *testing.T, data *TestData) {
 						},
 						TransportHeader: crdv1alpha1.TransportHeader{
 							UDP: &crdv1alpha1.UDPHeader{
-								DstPort: serverPort,
+								DstPort: serverPodPort,
 							},
 						},
 					},
@@ -211,6 +214,85 @@ func testPacketSamplingIntraNode(t *testing.T, data *TestData) {
 			},
 			expectedPhase: crdv1alpha1.PacketSamplingSucceeded,
 			expectedNum:   5,
+		},
+		{
+			name:      "intraNodeICMPPacketSamplingIPv4",
+			ipVersion: 4,
+			srcPod:    node1Pods[0],
+			ps: &crdv1alpha1.PacketSampling{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, node1Pods[0], data.testNamespace, node1Pods[1])),
+				},
+				Spec: crdv1alpha1.PacketSamplingSpec{
+					Source: crdv1alpha1.Source{
+						Namespace: data.testNamespace,
+						Pod:       node1Pods[0],
+					},
+					Destination: crdv1alpha1.Destination{
+						Namespace: data.testNamespace,
+						Pod:       node1Pods[1],
+					},
+
+					Type: crdv1alpha1.FirstNSampling,
+					FirstNSamplingConfig: &crdv1alpha1.FirstNSamplingConfig{
+						Number: 5,
+					},
+					FileServer: crdv1alpha1.BundleFileServer{
+						URL: fmt.Sprintf("%s:30010/upload", controlPlaneNodeIPv4()),
+					},
+					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
+						AuthType: "BasicAuthentication",
+						AuthSecret: &v1.SecretReference{
+							Name:      psSecretName,
+							Namespace: psNamespace,
+						},
+					},
+					Packet: crdv1alpha1.Packet{
+						IPHeader: crdv1alpha1.IPHeader{
+							Protocol: protocolICMP,
+						},
+					},
+				},
+			},
+			expectedPhase: crdv1alpha1.PacketSamplingSucceeded,
+			expectedNum:   5,
+		},
+		{
+
+			name:      "intraNodeNonExistDstPodIPV4",
+			ipVersion: 4,
+			srcPod:    node1Pods[0],
+			ps: &crdv1alpha1.PacketSampling{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, node1Pods[0], data.testNamespace, nonExistPodName)),
+				},
+				Spec: crdv1alpha1.PacketSamplingSpec{
+					Source: crdv1alpha1.Source{
+						Namespace: data.testNamespace,
+						Pod:       node1Pods[0],
+					},
+					Destination: crdv1alpha1.Destination{
+						Namespace: data.testNamespace,
+						Pod:       nonExistPodName,
+					},
+					Type: crdv1alpha1.FirstNSampling,
+					FirstNSamplingConfig: &crdv1alpha1.FirstNSamplingConfig{
+						Number: 5,
+					},
+					FileServer: crdv1alpha1.BundleFileServer{
+						URL: fmt.Sprintf("%s:30010/upload", controlPlaneNodeIPv4()),
+					},
+					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
+						AuthType: "BasicAuthentication",
+						AuthSecret: &v1.SecretReference{
+							Name:      psSecretName,
+							Namespace: psNamespace,
+						},
+					},
+				},
+			},
+			expectedPhase:  crdv1alpha1.PacketSamplingFailed,
+			expectedReason: fmt.Sprintf("Node: %s, error:failed to get the destination pod %s/%s: pods \"%s\" not found", node1, data.testNamespace, nonExistPodName, nonExistPodName),
 		},
 	}
 	t.Run("testPacketSamplingIntraNode", func(t *testing.T) {
@@ -222,6 +304,14 @@ func testPacketSamplingIntraNode(t *testing.T, data *TestData) {
 			})
 		}
 	})
+}
+
+func getOSString() string {
+	if len(clusterInfo.windowsNodes) != 0 {
+		return "windows"
+	} else {
+		return "linux"
+	}
 }
 
 func runPacketSamplingTest(t *testing.T, data *TestData, tc psTestCase) {
@@ -237,54 +327,51 @@ func runPacketSamplingTest(t *testing.T, data *TestData, tc psTestCase) {
 	if _, err := data.crdClient.CrdV1alpha1().PacketSamplings().Create(context.TODO(), tc.ps, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("Error when creating PacketSampling: %v", err)
 	}
-	defer func() {
+	/*	defer func() {
 		if err := data.crdClient.CrdV1alpha1().PacketSamplings().Delete(context.TODO(), tc.ps.Name, metav1.DeleteOptions{}); err != nil {
 			t.Errorf("Error when deleting PacketSampling: %v", err)
 		}
-	}()
+	}()*/
 
-	// LiveTraffic PacketSampling test supports only ICMP traffic from
-	// the source Pod to an IP or another Pod.
-	osString := "linux"
-	if len(clusterInfo.windowsNodes) != 0 {
-		osString = "windows"
-	}
-	var dstPodIPs *PodIPs
-	srcPod := tc.srcPod
-	if dstIP := tc.ps.Spec.Destination.IP; dstIP != "" {
-		ip := net.ParseIP(dstIP)
-		if ip.To4() != nil {
-			dstPodIPs = &PodIPs{IPv4: &ip}
+	if tc.ps.Spec.Destination.Pod != nonExistPodName {
+		osString := getOSString()
+		var dstPodIPs *PodIPs
+		srcPod := tc.srcPod
+		if dstIP := tc.ps.Spec.Destination.IP; dstIP != "" {
+			ip := net.ParseIP(dstIP)
+			if ip.To4() != nil {
+				dstPodIPs = &PodIPs{IPv4: &ip}
+			} else {
+				dstPodIPs = &PodIPs{IPv6: &ip}
+			}
 		} else {
-			dstPodIPs = &PodIPs{IPv6: &ip}
+			dstPod := tc.ps.Spec.Destination.Pod
+			podIPs := waitForPodIPs(t, data, []PodInfo{{dstPod, osString, "", ""}})
+			dstPodIPs = podIPs[dstPod]
 		}
-	} else {
-		dstPod := tc.ps.Spec.Destination.Pod
-		podIPs := waitForPodIPs(t, data, []PodInfo{{dstPod, osString, "", ""}})
-		dstPodIPs = podIPs[dstPod]
-	}
-	// Give a little time for Nodes to install OVS flows.
-	time.Sleep(time.Second * 2)
-	protocol := tc.ps.Spec.Packet.IPHeader.Protocol
-	server := dstPodIPs.IPv4.String()
-	if tc.ipVersion == 6 {
-		server = dstPodIPs.IPv6.String()
-	}
-	// Send an ICMP echo packet from the source Pod to the destination.
-	if protocol == protocolICMP {
-		if err := data.RunPingCommandFromTestPod(PodInfo{srcPod, osString, "", ""},
-			data.testNamespace, dstPodIPs, agnhostContainerName, 10, 0, false); err != nil {
-			t.Logf("Ping '%s' -> '%v' failed: ERROR (%v)", srcPod, *dstPodIPs, err)
+		// Give a little time for Nodes to install OVS flows.
+		time.Sleep(time.Second * 2)
+		protocol := tc.ps.Spec.Packet.IPHeader.Protocol
+		server := dstPodIPs.IPv4.String()
+		if tc.ipVersion == 6 {
+			server = dstPodIPs.IPv6.String()
 		}
-	} else if protocol == protocolTCP {
-		url := fmt.Sprintf("%s:%v", server, tc.ps.Spec.Packet.TransportHeader.TCP.DstPort)
-		if _, _, err := data.runWgetCommandOnBusyboxWithRetry(tc.srcPod, data.testNamespace, url, 3); err != nil {
-			t.Logf("wget '%s' -> '%v' failed: ERROR (%v)", srcPod, url, err)
-		}
-	} else if protocol == protocolUDP {
-		for i := 1; i <= 5; i++ {
-			if err := data.runNetcatCommandFromTestPodWithProtocol(tc.srcPod, data.testNamespace, busyboxContainerName, server, serverPort, "udp"); err != nil {
-				t.Logf("Netcat(UDP) '%s' -> '%v' failed: ERROR (%v)", srcPod, server, err)
+		// Send an ICMP echo packet from the source Pod to the destination.
+		if protocol == protocolICMP {
+			if err := data.RunPingCommandFromTestPod(PodInfo{srcPod, osString, "", ""},
+				data.testNamespace, dstPodIPs, agnhostContainerName, 10, 0, false); err != nil {
+				t.Logf("Ping '%s' -> '%v' failed: ERROR (%v)", srcPod, *dstPodIPs, err)
+			}
+		} else if protocol == protocolTCP {
+			url := fmt.Sprintf("%s:%v", server, tc.ps.Spec.Packet.TransportHeader.TCP.DstPort)
+			if _, _, err := data.runWgetCommandOnBusyboxWithRetry(tc.srcPod, data.testNamespace, url, 3); err != nil {
+				t.Logf("wget '%s' -> '%v' failed: ERROR (%v)", srcPod, url, err)
+			}
+		} else if protocol == protocolUDP {
+			for i := 1; i <= 5; i++ {
+				if err := data.runNetcatCommandFromTestPodWithProtocol(tc.srcPod, data.testNamespace, busyboxContainerName, server, serverPodPort, "udp"); err != nil {
+					t.Logf("Netcat(UDP) '%s' -> '%v' failed: ERROR (%v)", srcPod, server, err)
+				}
 			}
 		}
 	}
@@ -294,14 +381,8 @@ func runPacketSamplingTest(t *testing.T, data *TestData, tc psTestCase) {
 		t.Fatalf("Error: Get PacketSampling failed: %v", err)
 	}
 	if tc.expectedPhase == crdv1alpha1.PacketSamplingFailed {
-		isReasonMatch := false
-		for _, expectedReason := range tc.expectedReasons {
-			if ps.Status.Reason == expectedReason {
-				isReasonMatch = true
-			}
-		}
-		if !isReasonMatch {
-			t.Fatalf("Error: PacketSampling Error Reason should be %v, but got %s", tc.expectedReasons, ps.Status.Reason)
+		if ps.Status.Reason != tc.expectedReason {
+			t.Fatalf("Error: PacketSampling Error Reason should be %v, but got %s", tc.expectedReason, ps.Status.Reason)
 		}
 	}
 	if ps.Status.NumCapturedPackets != tc.expectedNum {
