@@ -32,6 +32,8 @@ import (
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
+// HandlePacketIn processes PacketIn messages from the OFSwitch. If the DSCP flag match, it will be counted and captured.
+// Once reache the target num, the PacketSampling will be marked as Succeed.
 func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	klog.V(4).Infof("PacketIn for PacketSampling: %+v", pktIn.PacketIn)
 	if !c.packetSamplingSynced() {
@@ -117,7 +119,7 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *crdv1alpha1.Packe
 	} else if etherData.Ethertype == protocol.IPv6_MSG {
 		ipv6Packet, ok := etherData.Data.(*protocol.IPv6)
 		if !ok {
-			return nil, nil, false, fmt.Errorf("invalid PacketSampling ipv6 packet")
+			return nil, nil, false, fmt.Errorf("invalid PacketSampling IPv6 packet")
 		}
 		tag = ipv6Packet.TrafficClass >> 2
 	} else {

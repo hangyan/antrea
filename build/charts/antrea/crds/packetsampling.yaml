@@ -86,10 +86,16 @@ spec:
                             - format: ipv6
                         protocol:
                           type: integer
+                          minimum: 0
+                          maximum: 255
                         ttl:
                           type: integer
+                          minimum: 0
+                          maximum: 255
                         flags:
                           type: integer
+                          minimum: 0
+                          maximum: 7
                     ipv6Header:
                       type: object
                       properties:

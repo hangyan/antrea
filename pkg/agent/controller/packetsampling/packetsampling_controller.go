@@ -274,7 +274,7 @@ func (c *Controller) processPacketSamplingItem() bool {
 	} else if err := c.syncPacketSampling(key); err == nil {
 		c.queue.Forget(key)
 	} else {
-		klog.Errorf("Error syncing PacketSampling %s, existing. Error: %v", key, err)
+		klog.Errorf("Error syncing PacketSampling %s, exiting. Error: %v", key, err)
 	}
 	return true
 }
