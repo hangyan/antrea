@@ -58,13 +58,13 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 		update.Status.NumCapturedPackets = samplingState.numCapturedPackets
 		_, err = c.crdClient.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), update, v1.UpdateOptions{})
 		if err != nil {
-			return fmt.Errorf("update Traceflow failed: %w", err)
+			return fmt.Errorf("failed to update the PacketSampling: %w", err)
 		}
 		klog.InfoS("Updated PacketSampling", "ps", klog.KObj(ps), "status", update.Status)
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("PacketSampling update error: %w", err)
+		return fmt.Errorf("failed to update the PacketSampling: %w", err)
 	}
 
 	if samplingState != nil {
@@ -104,9 +104,9 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingSta
 		}
 		tag = uint8(value)
 	}
-	c.runningPacketSamplingsMutex.Lock()
+	c.runningPacketSamplingsMutex.RLock()
 	psState, exists := c.runningPacketSamplings[int8(tag)]
-	c.runningPacketSamplingsMutex.Unlock()
+	c.runningPacketSamplingsMutex.RUnlock()
 	if exists {
 		if psState.numCapturedPackets == psState.maxNumCapturedPackets {
 			return nil, true, nil

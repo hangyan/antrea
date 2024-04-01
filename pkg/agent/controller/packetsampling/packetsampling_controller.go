@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"antrea.io/libOpenflow/protocol"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/spf13/afero"
@@ -41,8 +42,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-
-	"antrea.io/libOpenflow/protocol"
 
 	"antrea.io/antrea/pkg/agent/config"
 	"antrea.io/antrea/pkg/agent/interfacestore"
@@ -271,7 +270,7 @@ func (c *Controller) validatePacketSampling(ps *crdv1alpha1.PacketSampling) erro
 	return nil
 }
 
-func (c *Controller) errorPacketSamplingCRD(ps *crdv1alpha1.PacketSampling, reason string) (*crdv1alpha1.PacketSampling, error) {
+func (c *Controller) updatePacketSamplingCRDStatus(ps *crdv1alpha1.PacketSampling, reason string) (*crdv1alpha1.PacketSampling, error) {
 	ps.Status.Phase = crdv1alpha1.PacketSamplingFailed
 
 	type PacketSampling struct {
@@ -321,7 +320,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	defer func() {
 		if err != nil {
 			c.cleanupPacketSampling(ps.Name)
-			c.errorPacketSamplingCRD(ps, fmt.Sprintf("Node: %s, error:%+v", c.nodeConfig.Name, err))
+			c.updatePacketSamplingCRDStatus(ps, fmt.Sprintf("Node: %s, error:%+v", c.nodeConfig.Name, err))
 
 		}
 	}()
@@ -330,24 +329,24 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	}
 
 	receiverOnly := false
-	senderOnly := true
+	senderOnly := false
 	var pod, ns string
 	if ps.Spec.Destination.Pod != "" {
-		pod = ps.Spec.Source.Pod
-		ns = ps.Spec.Source.Namespace
-		senderOnly = false
+		pod = ps.Spec.Destination.Pod
+		ns = ps.Spec.Destination.Namespace
 		if ps.Spec.Source.Pod == "" {
 			receiverOnly = true
 		}
 	} else {
 		pod = ps.Spec.Source.Pod
 		ns = ps.Spec.Source.Namespace
+		senderOnly = true
 	}
 
 	podInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pod, ns)
 	isSender := !receiverOnly && len(podInterfaces) > 0
 
-	var packet, matchPacket *binding.Packet
+	var packet, senderPacket *binding.Packet
 	var endpointPackets []binding.Packet
 	var ofPort uint32
 
@@ -357,7 +356,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 			return err
 		}
 		ofPort = uint32(podInterfaces[0].OFPort)
-		matchPacket = packet
+		senderPacket = packet
 		klog.V(2).InfoS("PacketSampling packet:", "packet", *packet)
 		if senderOnly && ps.Spec.Destination.Service != "" {
 			endpointPackets, err = c.genEndpointMatchPackets(ps)
@@ -410,7 +409,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 	}
 	if psState.shouldSyncPackets {
 		klog.V(2).InfoS("installing flow entries for PacketSampling.", "name", ps.Name)
-		err = c.ofClient.InstallPacketSamplingFlows(uint8(psState.tag), senderOnly, receiverOnly, matchPacket, endpointPackets, ofPort, timeout)
+		err = c.ofClient.InstallPacketSamplingFlows(uint8(psState.tag), senderOnly, receiverOnly, senderPacket, endpointPackets, ofPort, timeout)
 		if err != nil {
 			klog.ErrorS(err, "install flow entries failed.", "name", ps.Name)
 		}
@@ -440,45 +439,38 @@ func fileExists(uid string) (bool, error) {
 // these match packets will help the pipeline to capture the pod -> svc traffic.
 // TODO: 1. support name based port name 2. dual-stack support
 func (c *Controller) genEndpointMatchPackets(ps *crdv1alpha1.PacketSampling) ([]binding.Packet, error) {
-	if ps.Spec.Destination.Service != "" {
-		var port int32
-		if ps.Spec.Packet.TransportHeader.TCP != nil {
-			port = ps.Spec.Packet.TransportHeader.TCP.DstPort
-		} else if ps.Spec.Packet.TransportHeader.UDP != nil {
-			port = ps.Spec.Packet.TransportHeader.UDP.DstPort
-		}
-
-		var packets []binding.Packet
-		dstSvc, err := c.serviceLister.Services(ps.Spec.Destination.Namespace).Get(ps.Spec.Destination.Service)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, item := range dstSvc.Spec.Ports {
-			if item.Port == port {
-				if item.TargetPort.Type == intstr.Int {
-					port = item.TargetPort.IntVal
-				}
-			}
-		}
-
-		dstEndpoint, err := c.endpointLister.Endpoints(ps.Spec.Destination.Namespace).Get(ps.Spec.Destination.Service)
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range dstEndpoint.Subsets[0].Addresses {
-			packet := binding.Packet{}
-			packet.DestinationIP = net.ParseIP(item.IP)
-			if port != 0 {
-				packet.DestinationPort = uint16(port)
-			}
-			packet.IPProto = parseTargetProto(&ps.Spec.Packet)
-			packets = append(packets, packet)
-		}
-		return packets, nil
+	var port int32
+	if ps.Spec.Packet.TransportHeader.TCP != nil {
+		port = ps.Spec.Packet.TransportHeader.TCP.DstPort
+	} else if ps.Spec.Packet.TransportHeader.UDP != nil {
+		port = ps.Spec.Packet.TransportHeader.UDP.DstPort
 	}
-	return nil, nil
-
+	var packets []binding.Packet
+	dstSvc, err := c.serviceLister.Services(ps.Spec.Destination.Namespace).Get(ps.Spec.Destination.Service)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range dstSvc.Spec.Ports {
+		if item.Port == port {
+			if item.TargetPort.Type == intstr.Int {
+				port = item.TargetPort.IntVal
+			}
+		}
+	}
+	dstEndpoint, err := c.endpointLister.Endpoints(ps.Spec.Destination.Namespace).Get(ps.Spec.Destination.Service)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range dstEndpoint.Subsets[0].Addresses {
+		packet := binding.Packet{}
+		packet.DestinationIP = net.ParseIP(item.IP)
+		if port != 0 {
+			packet.DestinationPort = uint16(port)
+		}
+		packet.IPProto, _ = parseTargetProto(&ps.Spec.Packet)
+		packets = append(packets, packet)
+	}
+	return packets, nil
 }
 
 func (c *Controller) preparePacket(ps *crdv1alpha1.PacketSampling, intf *interfacestore.InterfaceConfig, receiverOnly bool) (*binding.Packet, error) {
@@ -557,11 +549,15 @@ func (c *Controller) preparePacket(ps *crdv1alpha1.PacketSampling, intf *interfa
 		packet.DestinationPort = uint16(ps.Spec.Packet.TransportHeader.UDP.DstPort)
 	}
 
-	packet.IPProto = parseTargetProto(&ps.Spec.Packet)
+	proto, err := parseTargetProto(&ps.Spec.Packet)
+	if err != nil {
+		return nil, err
+	}
+	packet.IPProto = proto
 	return packet, nil
 }
 
-func parseTargetProto(packet *crdv1alpha1.Packet) uint8 {
+func parseTargetProto(packet *crdv1alpha1.Packet) (uint8, error) {
 	var ipProto uint8
 	var isIPv6 bool
 	if packet.IPv6Header != nil {
@@ -573,17 +569,22 @@ func parseTargetProto(packet *crdv1alpha1.Packet) uint8 {
 		ipProto = uint8(packet.IPHeader.Protocol)
 	}
 
+	proto2 := ipProto
 	if packet.TransportHeader.TCP != nil {
-		ipProto = protocol.Type_TCP
+		proto2 = protocol.Type_TCP
 	} else if packet.TransportHeader.UDP != nil {
-		ipProto = protocol.Type_UDP
+		proto2 = protocol.Type_UDP
 	} else if packet.TransportHeader.ICMP != nil || ipProto == 0 {
-		ipProto = protocol.Type_ICMP
+		proto2 = protocol.Type_ICMP
 		if isIPv6 {
-			ipProto = protocol.Type_IPv6ICMP
+			proto2 = protocol.Type_IPv6ICMP
 		}
 	}
-	return ipProto
+
+	if ipProto != 0 && proto2 != ipProto {
+		return 0, errors.New("conflicting protocol settings in ipHeader and transportHeader")
+	}
+	return proto2, nil
 }
 
 func (c *Controller) syncPacketSampling(psName string) error {

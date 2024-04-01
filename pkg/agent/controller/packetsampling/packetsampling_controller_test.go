@@ -203,7 +203,7 @@ func TestErrPacketSamplingCRD(t *testing.T) {
 
 	psc := newFakePacketSamplingController(t, nil, []runtime.Object{ps}, nil, nil)
 
-	gotPS, err := psc.errorPacketSamplingCRD(ps, reason)
+	gotPS, err := psc.updatePacketSamplingCRDStatus(ps, reason)
 	require.NoError(t, err)
 	assert.Equal(t, expectedPS, gotPS)
 }

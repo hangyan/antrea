@@ -4531,7 +4531,7 @@ spec:
                         flags:
                           type: integer
                           minimum: 0
-                          maximum: 7
+                          maximum: 255
                     ipv6Header:
                       type: object
                       properties:
@@ -4585,9 +4585,11 @@ spec:
                             flags:
                               type: integer
                               minimum: 0
-                              maximum: 7
+                              maximum: 255
                 timeout:
                   type: integer
+                  minimum: 1
+                  maximum: 300
                 type:
                   type: string
                 firstNSamplingConfig:
@@ -5202,7 +5204,7 @@ spec:
                         flags:
                           type: integer
                           minimum: 0
-                          maximum: 7
+                          maximum: 255
                     ipv6Header:
                       type: object
                       properties:
@@ -5334,7 +5336,7 @@ spec:
                         flags:
                           type: integer
                           minimum: 0
-                          maximum: 7
+                          maximum: 255
                         protocol:
                           type: integer
                           minimum: 0
