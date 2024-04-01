@@ -19,6 +19,10 @@ import (
 	"net"
 	"testing"
 
+	"antrea.io/libOpenflow/openflow15"
+	"antrea.io/libOpenflow/protocol"
+	"antrea.io/libOpenflow/util"
+	"antrea.io/ofnet/ofctrl"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/spf13/afero"
@@ -30,13 +34,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	"antrea.io/libOpenflow/openflow15"
-	"antrea.io/libOpenflow/protocol"
-	"antrea.io/libOpenflow/util"
-	"antrea.io/ofnet/ofctrl"
 
-	"antrea.io/antrea/pkg/agent/openflow"
 	"antrea.io/antrea/pkg/agent/config"
+	"antrea.io/antrea/pkg/agent/openflow"
 	openflowtest "antrea.io/antrea/pkg/agent/openflow/testing"
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )

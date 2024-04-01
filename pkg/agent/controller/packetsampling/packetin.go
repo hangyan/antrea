@@ -19,14 +19,14 @@ import (
 	"fmt"
 	"time"
 
+	"antrea.io/libOpenflow/util"
+	"antrea.io/ofnet/ofctrl"
 	"github.com/google/gopacket"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
-	"antrea.io/libOpenflow/util"
-	"antrea.io/ofnet/ofctrl"
 
-        "antrea.io/antrea/pkg/agent/openflow"
+	"antrea.io/antrea/pkg/agent/openflow"
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 

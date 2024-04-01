@@ -1,6 +1,6 @@
 # PacketSampling User Guide
 
-Starting with Antrea v1.16, Antrea supports using PacketSampling for network diagnosis. 
+Starting with Antrea v1.16, Antrea supports using PacketSampling for network diagnosis.
 It can capture specified number of packets from real traffic and upload them to a
 supported storage location. Users can create a PacketSampling CRD to trigger
 such actions on the target traffic flow.
@@ -13,8 +13,8 @@ such actions on the target traffic flow.
 ## Prerequisites
 
 The PacketSampling feature is disabled by default. If you
-want to enable this feature, you need to set PacketSampling feature gate to true in `antrea-config` 
-ConfigMap for both antrea-controller and antrea-agent. In order to use a Service as the destination 
+want to enable this feature, you need to set PacketSampling feature gate to true in `antrea-config`
+ConfigMap for both antrea-controller and antrea-agent. In order to use a Service as the destination
 in sampling, you also need to ensure [AntreaProxy](feature-gates.md#antreaproxy) is enabled in the agent configuration:
 
 ```yaml
@@ -75,7 +75,7 @@ spec:
 ```
 
 The CRD above starts a new packet sampling from a Pod named `frontend`
-to the port 8080 of a Pod named `backend` using TCP protocol. It will capture the first 5 packets 
-that meet this criterion and upload them to the file server specified in the PacketSampling's 
-specifications. Users can download the packet file from the ftp server and analysis it's content 
+to the port 8080 of a Pod named `backend` using TCP protocol. It will capture the first 5 packets
+that meet this criterion and upload them to the file server specified in the PacketSampling's
+specifications. Users can download the packet file from the ftp server and analysis it's content
 with common network diagnose tools like Wireshark or `tcpdump`.
