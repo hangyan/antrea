@@ -23,17 +23,15 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
-
-	"antrea.io/antrea/pkg/agent/openflow"
-
 	"antrea.io/libOpenflow/util"
 	"antrea.io/ofnet/ofctrl"
 
+        "antrea.io/antrea/pkg/agent/openflow"
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
 // HandlePacketIn processes PacketIn messages from the OFSwitch. If the DSCP flag match, it will be counted and captured.
-// Once reaches the target num, the PacketSampling will be marked as Succeed.
+// Once the total number reaches the target one, the PacketSampling will be marked as Succeed.
 func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	klog.V(4).InfoS("PacketIn for PacketSampling", "PacketIn", pktIn.PacketIn)
 	samplingState, shouldSkip, err := c.parsePacketIn(pktIn)
@@ -48,7 +46,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		ps, err := c.packetSamplingInformer.Lister().Get(samplingState.name)
 		if err != nil {
-			return fmt.Errorf("get PacketSampling failed: %w", err)
+			return fmt.Errorf("failed to get PacketSampling: %w", err)
 		}
 
 		shouldUpdate := samplingState.shouldSyncPackets && (samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == samplingState.maxNumCapturedPackets)
@@ -93,7 +91,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 }
 
 // parsePacketIn parses the packet-in message and returns
-// 1. the sampling state of the PacketSampling (on sampling mode),
+// 1. the sampling state of the PacketSampling (on sampling mode)
 func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingState, shouldSkip bool, _ error) {
 	var tag uint8
 	samplingState := packetSamplingState{}

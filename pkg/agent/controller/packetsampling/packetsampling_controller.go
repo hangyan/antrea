@@ -70,9 +70,7 @@ const (
 	maxRetryDelay = 300 * time.Second
 
 	defaultWorkers = 4
-)
 
-const (
 	samplingStatusUpdatePeriod = 10 * time.Second
 )
 
@@ -387,7 +385,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling) error {
 
 	file, err := createPcapngFile(string(ps.UID))
 	if err != nil {
-		return fmt.Errorf("couldn't craete pcapng file: %w", err)
+		return fmt.Errorf("failed to create pcapng file: %w", err)
 	}
 
 	writer, err := pcapgo.NewNgWriter(file, layers.LinkTypeEthernet)
@@ -438,7 +436,7 @@ func fileExists(uid string) (bool, error) {
 	}
 }
 
-// genEndpointMatchPackets generates match packets(with dest endpoint's ip/port info) besides the normal match packet.
+// genEndpointMatchPackets generates match packets (with destination Endpoint's IP/port info) besides the normal match packet.
 // these match packets will help the pipeline to capture the pod -> svc traffic.
 // TODO: 1. support name based port name 2. dual-stack support
 func (c *Controller) genEndpointMatchPackets(ps *crdv1alpha1.PacketSampling) ([]binding.Packet, error) {
@@ -532,7 +530,7 @@ func (c *Controller) preparePacket(ps *crdv1alpha1.PacketSampling, intf *interfa
 			return nil, fmt.Errorf("failed to get the destination service %s/%s: %v", ps.Spec.Destination.Namespace, ps.Spec.Destination.Service, err)
 		}
 		if dstSvc.Spec.ClusterIP == "" {
-			return nil, errors.New("destination Service does not have an ClusterIP")
+			return nil, errors.New("destination Service does not have a ClusterIP")
 		}
 
 		packet.DestinationIP = net.ParseIP(dstSvc.Spec.ClusterIP)

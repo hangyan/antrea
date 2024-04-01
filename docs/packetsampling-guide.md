@@ -1,9 +1,9 @@
 # PacketSampling User Guide
 
-Starting with Antrea v1.16, Antrea supports using PacketSampling for network diagnosis. It can capture
+Starting with Antrea v2.0, Antrea supports using PacketSampling for network diagnosis. It can capture
 specified number of packets from real traffic and upload them to a
 supported storage location. Users can create a PacketSampling CRD to trigger
-such an action on the target traffic flow.
+such actions on the target traffic flow.
 
 <!-- toc -->
 - [Prerequisites](#prerequisites)
@@ -20,7 +20,7 @@ order to use a Service as the destination in sampling, you also need to ensure
 ```yaml
   antrea-controller.conf: |
     featureGates:
-    # Enable packetsampling feature to help diagnose network issues by capture real traffic packets.
+    # Enable packetsampling feature to help diagnose network issues by capturing real traffic packets.
       PacketSampling: true
   antrea-agent.conf: |
     featureGates:
@@ -40,7 +40,7 @@ the target flow:
 
 You can start a new packet sampling by creating PacketSampling CRD via
 `kubectl` and a yaml file which contains the essential configuration of
-PacketSampling CRD. Following is an example yaml file of PacketSampling CRD:
+PacketSampling CRD. Following is an example of PacketSampling CRD:
 
 ```yaml
 apiVersion: crd.antrea.io/v1alpha1
