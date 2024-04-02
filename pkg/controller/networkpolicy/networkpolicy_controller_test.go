@@ -41,7 +41,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	fakepolicyversioned "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned/fake"
 	policyv1a1informers "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 
@@ -2844,10 +2844,10 @@ func TestAddressGroupWithNodeSelector(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		assert.NoError(t, wait.Poll(time.Millisecond*100, time.Second, func() (done bool, err error) {
+		assert.Eventually(t, func() bool {
 			newNode, err := c.nodeLister.Get(node.Name)
-			return reflect.DeepEqual(node, newNode), err
-		}))
+			return reflect.DeepEqual(node, newNode) && err == nil
+		}, time.Second, 100*time.Millisecond)
 		return nil
 	}
 	fakeNode0.Labels = nodeSelectorA.MatchLabels
@@ -3213,7 +3213,7 @@ func TestSyncInternalNetworkPolicy(t *testing.T) {
 			UID:  "uidA",
 		},
 		Priority:     &p10,
-		TierPriority: &DefaultTierPriority,
+		TierPriority: ptr.To(v1beta1.DefaultTierPriority),
 		Rules: []controlplane.NetworkPolicyRule{
 			{
 				Direction: controlplane.DirectionIn,
@@ -3546,7 +3546,7 @@ func TestSyncInternalNetworkPolicyWithGroups(t *testing.T) {
 					UID:       "uidA",
 				},
 				Priority:     &p10,
-				TierPriority: &DefaultTierPriority,
+				TierPriority: ptr.To(v1beta1.DefaultTierPriority),
 				Rules: []controlplane.NetworkPolicyRule{
 					{
 						Direction: controlplane.DirectionIn,
@@ -3595,7 +3595,7 @@ func TestSyncInternalNetworkPolicyWithGroups(t *testing.T) {
 					UID:       "uidA",
 				},
 				Priority:     &p10,
-				TierPriority: &DefaultTierPriority,
+				TierPriority: ptr.To(v1beta1.DefaultTierPriority),
 				Rules: []controlplane.NetworkPolicyRule{
 					{
 						Direction: controlplane.DirectionIn,
@@ -3639,7 +3639,7 @@ func TestSyncInternalNetworkPolicyWithGroups(t *testing.T) {
 					UID:       "uidA",
 				},
 				Priority:     &p10,
-				TierPriority: &DefaultTierPriority,
+				TierPriority: ptr.To(v1beta1.DefaultTierPriority),
 				Rules: []controlplane.NetworkPolicyRule{
 					{
 						Direction: controlplane.DirectionIn,
@@ -3688,7 +3688,7 @@ func TestSyncInternalNetworkPolicyWithGroups(t *testing.T) {
 					UID:       "uidA",
 				},
 				Priority:     &p10,
-				TierPriority: &DefaultTierPriority,
+				TierPriority: ptr.To(v1beta1.DefaultTierPriority),
 				Rules: []controlplane.NetworkPolicyRule{
 					{
 						Direction: controlplane.DirectionIn,
@@ -3720,7 +3720,7 @@ func TestSyncInternalNetworkPolicyWithGroups(t *testing.T) {
 			c.crdClient.CrdV1beta1().NetworkPolicies(tt.inputPolicy.Namespace).Create(context.TODO(), tt.inputPolicy, metav1.CreateOptions{})
 
 			var gotPolicy *antreatypes.NetworkPolicy
-			err := wait.PollImmediate(100*time.Millisecond, 3*time.Second, func() (done bool, err error) {
+			err := wait.PollUntilContextTimeout(context.Background(), 100*time.Millisecond, 3*time.Second, true, func(ctx context.Context) (done bool, err error) {
 				obj, exists, _ := c.internalNetworkPolicyStore.Get(tt.expectedPolicy.Name)
 				if !exists {
 					return false, nil
@@ -3939,7 +3939,7 @@ func TestClusterNetworkPolicyWithClusterGroup(t *testing.T) {
 		UID:       acnp.UID,
 		Name:      string(acnp.UID),
 		SourceRef: &controlplane.NetworkPolicyReference{Type: controlplane.AntreaClusterNetworkPolicy, Name: acnp.Name, UID: acnp.UID},
-		Priority:  pointer.Float64(acnp.Spec.Priority),
+		Priority:  ptr.To(acnp.Spec.Priority),
 		Rules: []controlplane.NetworkPolicyRule{
 			{
 				Direction: controlplane.DirectionIn,
@@ -3948,7 +3948,7 @@ func TestClusterNetworkPolicyWithClusterGroup(t *testing.T) {
 			},
 		},
 		AppliedToGroups: []string{cgA.Name},
-		TierPriority:    &DefaultTierPriority,
+		TierPriority:    ptr.To(v1beta1.DefaultTierPriority),
 	}
 	expectedAppliedToGroup := &antreatypes.AppliedToGroup{
 		SpanMeta:    antreatypes.SpanMeta{NodeNames: sets.New(podA.Spec.NodeName)},
@@ -4010,12 +4010,12 @@ func TestClusterNetworkPolicyWithClusterGroup(t *testing.T) {
 		UID:       acnp.UID,
 		Name:      string(acnp.UID),
 		SourceRef: &controlplane.NetworkPolicyReference{Type: controlplane.AntreaClusterNetworkPolicy, Name: acnp.Name, UID: acnp.UID},
-		Priority:  pointer.Float64(acnp.Spec.Priority),
+		Priority:  ptr.To(acnp.Spec.Priority),
 		Rules: []controlplane.NetworkPolicyRule{
 			{Direction: controlplane.DirectionIn, Action: &allowAction},
 		},
 		AppliedToGroups: []string{cgA.Name},
-		TierPriority:    &DefaultTierPriority,
+		TierPriority:    ptr.To(v1beta1.DefaultTierPriority),
 	}
 	checkResources(expectedPolicy2, expectedAppliedToGroup, nil)
 
@@ -4027,12 +4027,12 @@ func TestClusterNetworkPolicyWithClusterGroup(t *testing.T) {
 		UID:       acnp.UID,
 		Name:      string(acnp.UID),
 		SourceRef: &controlplane.NetworkPolicyReference{Type: controlplane.AntreaClusterNetworkPolicy, Name: acnp.Name, UID: acnp.UID},
-		Priority:  pointer.Float64(acnp.Spec.Priority),
+		Priority:  ptr.To(acnp.Spec.Priority),
 		Rules: []controlplane.NetworkPolicyRule{
 			{Direction: controlplane.DirectionIn, Action: &allowAction},
 		},
 		AppliedToGroups: []string{},
-		TierPriority:    &DefaultTierPriority,
+		TierPriority:    ptr.To(v1beta1.DefaultTierPriority),
 	}
 	checkResources(expectedPolicy3, nil, nil)
 

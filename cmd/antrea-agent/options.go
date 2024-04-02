@@ -22,12 +22,11 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/util/sets"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/featuregate"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"antrea.io/antrea/pkg/agent/config"
 	"antrea.io/antrea/pkg/apis"
@@ -38,6 +37,7 @@ import (
 	"antrea.io/antrea/pkg/util/env"
 	"antrea.io/antrea/pkg/util/flowexport"
 	"antrea.io/antrea/pkg/util/ip"
+	"antrea.io/antrea/pkg/util/yaml"
 )
 
 const (
@@ -172,7 +172,11 @@ func (o *Options) loadConfigFromFile() error {
 		return err
 	}
 
-	return yaml.UnmarshalStrict(data, &o.config)
+	err = yaml.UnmarshalLenient(data, &o.config)
+	if err != nil {
+		return fmt.Errorf("failed to decode config file %s: %w", o.configFile, err)
+	}
+	return nil
 }
 
 func (o *Options) setDefaults() {
@@ -411,10 +415,10 @@ func (o *Options) setK8sNodeDefaultOptions() {
 		o.config.HostProcPathPrefix = defaultHostProcPathPrefix
 	}
 	if o.config.AntreaProxy.Enable == nil {
-		o.config.AntreaProxy.Enable = pointer.Bool(true)
+		o.config.AntreaProxy.Enable = ptr.To(true)
 	}
 	if o.config.AntreaProxy.ProxyLoadBalancerIPs == nil {
-		o.config.AntreaProxy.ProxyLoadBalancerIPs = pointer.Bool(true)
+		o.config.AntreaProxy.ProxyLoadBalancerIPs = ptr.To(true)
 	}
 	if o.config.ServiceCIDR == "" {
 		//It's okay to set the default value of this field even when AntreaProxy is enabled and the field is not used.
@@ -427,7 +431,7 @@ func (o *Options) setK8sNodeDefaultOptions() {
 		o.config.ClusterMembershipPort = apis.AntreaAgentClusterMembershipPort
 	}
 	if o.config.EnablePrometheusMetrics == nil {
-		o.config.EnablePrometheusMetrics = pointer.Bool(true)
+		o.config.EnablePrometheusMetrics = ptr.To(true)
 	}
 	if o.config.WireGuard.Port == 0 {
 		o.config.WireGuard.Port = apis.WireGuardListenPort

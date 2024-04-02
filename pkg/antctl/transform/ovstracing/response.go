@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"antrea.io/antrea/pkg/agent/apiserver/handlers/ovstracing"
+	"antrea.io/antrea/pkg/agent/apis"
 )
 
 func Transform(reader io.Reader, _ bool, _ map[string]string) (interface{}, error) {
@@ -26,7 +26,7 @@ func Transform(reader io.Reader, _ bool, _ map[string]string) (interface{}, erro
 	if err != nil {
 		return nil, err
 	}
-	resp := new(ovstracing.Response)
+	resp := new(apis.OVSTracingResponse)
 	err = json.Unmarshal(b, resp)
 	if err != nil {
 		return nil, err

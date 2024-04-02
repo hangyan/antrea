@@ -40,7 +40,7 @@ import (
 	policyv1a1informers "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 
 	mcinformers "antrea.io/antrea/multicluster/pkg/client/informers/externalversions"
-	antreaapis "antrea.io/antrea/pkg/apis"
+	"antrea.io/antrea/pkg/apis"
 	"antrea.io/antrea/pkg/apiserver"
 	"antrea.io/antrea/pkg/apiserver/certificate"
 	"antrea.io/antrea/pkg/apiserver/openapi"
@@ -240,7 +240,7 @@ func run(o *Options) error {
 	var csrLister csrlisters.CertificateSigningRequestLister
 	if features.DefaultFeatureGate.Enabled(features.IPsecCertAuth) {
 		csrInformer = csrinformers.NewFilteredCertificateSigningRequestInformer(client, 0, nil, func(listOptions *metav1.ListOptions) {
-			listOptions.FieldSelector = fields.OneTermEqualSelector("spec.signerName", antreaapis.AntreaIPsecCSRSignerName).String()
+			listOptions.FieldSelector = fields.OneTermEqualSelector("spec.signerName", apis.AntreaIPsecCSRSignerName).String()
 		})
 		csrLister = csrlisters.NewCertificateSigningRequestLister(csrInformer.GetIndexer())
 
@@ -546,13 +546,16 @@ func createAPIServerConfig(kubeconfig string,
 		return nil, err
 	}
 
-	if err := os.MkdirAll(path.Dir(apiserver.TokenPath), os.ModeDir); err != nil {
+	if err := os.MkdirAll(path.Dir(apis.APIServerLoopbackTokenPath), os.ModeDir); err != nil {
 		return nil, fmt.Errorf("error when creating dirs of token file: %v", err)
 	}
-	if err := os.WriteFile(apiserver.TokenPath, []byte(serverConfig.LoopbackClientConfig.BearerToken), 0600); err != nil {
+	if err := os.WriteFile(apis.APIServerLoopbackTokenPath, []byte(serverConfig.LoopbackClientConfig.BearerToken), 0600); err != nil {
 		return nil, fmt.Errorf("error when writing loopback access token to file: %v", err)
 	}
 	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(
+		openapi.GetOpenAPIDefinitions,
+		genericopenapi.NewDefinitionNamer(apiserver.Scheme))
+	serverConfig.OpenAPIV3Config = genericapiserver.DefaultOpenAPIV3Config(
 		openapi.GetOpenAPIDefinitions,
 		genericopenapi.NewDefinitionNamer(apiserver.Scheme))
 	serverConfig.OpenAPIConfig.Info.Title = "Antrea"

@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	k8sversion "k8s.io/apimachinery/pkg/version"
+	genericopenapi "k8s.io/apiserver/pkg/endpoints/openapi"
 	"k8s.io/apiserver/pkg/registry/rest"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -45,7 +46,9 @@ import (
 	agentquerier "antrea.io/antrea/pkg/agent/querier"
 	systeminstall "antrea.io/antrea/pkg/apis/system/install"
 	systemv1beta1 "antrea.io/antrea/pkg/apis/system/v1beta1"
+	"antrea.io/antrea/pkg/apiserver"
 	"antrea.io/antrea/pkg/apiserver/handlers/loglevel"
+	"antrea.io/antrea/pkg/apiserver/openapi"
 	"antrea.io/antrea/pkg/apiserver/registry/system/supportbundle"
 	"antrea.io/antrea/pkg/ovs/ovsctl"
 	"antrea.io/antrea/pkg/querier"
@@ -57,8 +60,6 @@ const CertPairName = "antrea-agent-api"
 var (
 	scheme = runtime.NewScheme()
 	codecs = serializer.NewCodecFactory(scheme)
-	// #nosec G101: false positive triggered by variable name which includes "token"
-	TokenPath = "/var/run/antrea/apiserver/loopback-client-token"
 )
 
 func init() {
@@ -118,10 +119,11 @@ func New(aq agentquerier.AgentQuerier,
 	authorization *genericoptions.DelegatingAuthorizationOptions,
 	enableMetrics bool,
 	kubeconfig string,
+	loopbackClientTokenPath string,
 	v4Enabled,
 	v6Enabled bool,
 ) (*agentAPIServer, error) {
-	cfg, err := newConfig(aq, npq, secureServing, authentication, authorization, enableMetrics, kubeconfig)
+	cfg, err := newConfig(aq, npq, secureServing, authentication, authorization, enableMetrics, kubeconfig, loopbackClientTokenPath)
 	if err != nil {
 		return nil, err
 	}
@@ -143,6 +145,7 @@ func newConfig(aq agentquerier.AgentQuerier,
 	authorization *genericoptions.DelegatingAuthorizationOptions,
 	enableMetrics bool,
 	kubeconfig string,
+	loopbackClientTokenPath string,
 ) (*genericapiserver.CompletedConfig, error) {
 	// kubeconfig file is useful when antrea-agent isn't running as a Pod.
 	if len(kubeconfig) > 0 {
@@ -167,10 +170,10 @@ func newConfig(aq agentquerier.AgentQuerier,
 	if err := authorization.ApplyTo(&serverConfig.Authorization); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(path.Dir(TokenPath), os.ModeDir); err != nil {
+	if err := os.MkdirAll(path.Dir(loopbackClientTokenPath), os.ModeDir); err != nil {
 		return nil, fmt.Errorf("error when creating dirs of token file: %v", err)
 	}
-	if err := os.WriteFile(TokenPath, []byte(serverConfig.LoopbackClientConfig.BearerToken), 0600); err != nil {
+	if err := os.WriteFile(loopbackClientTokenPath, []byte(serverConfig.LoopbackClientConfig.BearerToken), 0600); err != nil {
 		return nil, fmt.Errorf("error when writing loopback access token to file: %v", err)
 	}
 	v := antreaversion.GetVersion()
@@ -199,6 +202,9 @@ func newConfig(aq agentquerier.AgentQuerier,
 		return fmt.Errorf("disconnected from OFSwitch")
 	})
 	serverConfig.LivezChecks = append(serverConfig.LivezChecks, ovsConnCheck)
+	serverConfig.OpenAPIV3Config = genericapiserver.DefaultOpenAPIV3Config(
+		openapi.GetOpenAPIDefinitions,
+		genericopenapi.NewDefinitionNamer(apiserver.Scheme))
 
 	completedServerCfg := serverConfig.Complete(nil)
 	return &completedServerCfg, nil

@@ -67,6 +67,7 @@ import (
 	"antrea.io/antrea/pkg/agent/stats"
 	support "antrea.io/antrea/pkg/agent/supportbundlecollection"
 	agenttypes "antrea.io/antrea/pkg/agent/types"
+	"antrea.io/antrea/pkg/apis"
 	"antrea.io/antrea/pkg/apis/controlplane"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions"
 	crdv1alpha1informers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
@@ -801,10 +802,10 @@ func run(o *Options) error {
 		// Service would fail.
 		if o.config.AntreaProxy.ProxyAll {
 			klog.InfoS("Waiting for AntreaProxy to be ready")
-			if err := wait.PollUntil(time.Second, func() (bool, error) {
+			if err := wait.PollUntilContextCancel(wait.ContextForChannel(stopCh), time.Second, false, func(ctx context.Context) (bool, error) {
 				klog.V(2).InfoS("Checking if AntreaProxy is ready")
 				return proxier.GetProxyProvider().SyncedOnce(), nil
-			}, stopCh); err != nil {
+			}); err != nil {
 				return fmt.Errorf("error when waiting for AntreaProxy to be ready: %v", err)
 			}
 			klog.InfoS("AntreaProxy is ready")
@@ -841,7 +842,9 @@ func run(o *Options) error {
 			validator,
 			networkConfig.TrafficEncapMode.SupportsEncap(),
 			nodeInformer,
-			enableBridgingMode)
+			enableBridgingMode,
+			v4Enabled,
+			v6Enabled)
 		if err := mcastController.Initialize(); err != nil {
 			return err
 		}
@@ -916,6 +919,7 @@ func run(o *Options) error {
 		authorization,
 		*o.config.EnablePrometheusMetrics,
 		o.config.ClientConnection.Kubeconfig,
+		apis.APIServerLoopbackTokenPath,
 		v4Enabled,
 		v6Enabled)
 	if err != nil {

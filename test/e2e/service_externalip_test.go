@@ -33,10 +33,10 @@ import (
 	"k8s.io/client-go/util/retry"
 	utilnet "k8s.io/utils/net"
 
+	"antrea.io/antrea/pkg/agent/apis"
 	antreaagenttypes "antrea.io/antrea/pkg/agent/types"
 	"antrea.io/antrea/pkg/apis/crd/v1beta1"
 	"antrea.io/antrea/pkg/features"
-	"antrea.io/antrea/pkg/querier"
 )
 
 func TestServiceExternalIP(t *testing.T) {
@@ -343,20 +343,21 @@ func testServiceWithExternalIPCRUD(t *testing.T, data *TestData) {
 
 			checkEIPStatus := func(expectedUsed int) {
 				var gotUsed, gotTotal int
-				err := wait.PollImmediate(200*time.Millisecond, 2*time.Second, func() (done bool, err error) {
-					pool, err := data.crdClient.CrdV1alpha2().ExternalIPPools().Get(context.TODO(), ipPool.Name, metav1.GetOptions{})
-					if err != nil {
-						return false, fmt.Errorf("failed to get ExternalIPPool: %v", err)
-					}
-					gotUsed, gotTotal = pool.Status.Usage.Used, pool.Status.Usage.Total
-					if expectedUsed != pool.Status.Usage.Used {
-						return false, nil
-					}
-					if tt.expectedTotal != pool.Status.Usage.Total {
-						return false, nil
-					}
-					return true, nil
-				})
+				err := wait.PollUntilContextTimeout(context.Background(), 200*time.Millisecond, 2*time.Second, true,
+					func(ctx context.Context) (done bool, err error) {
+						pool, err := data.crdClient.CrdV1alpha2().ExternalIPPools().Get(context.TODO(), ipPool.Name, metav1.GetOptions{})
+						if err != nil {
+							return false, fmt.Errorf("failed to get ExternalIPPool: %v", err)
+						}
+						gotUsed, gotTotal = pool.Status.Usage.Used, pool.Status.Usage.Total
+						if expectedUsed != pool.Status.Usage.Used {
+							return false, nil
+						}
+						if tt.expectedTotal != pool.Status.Usage.Total {
+							return false, nil
+						}
+						return true, nil
+					})
 				require.NoError(t, err, "ExternalIPPool status not match: expectedTotal=%d, got=%d, expectedUsed=%d, got=%d", tt.expectedTotal, gotTotal, expectedUsed, gotUsed)
 			}
 			checkEIPStatus(1)
@@ -520,7 +521,7 @@ func testServiceNodeFailure(t *testing.T, data *TestData) {
 				expectedMigratedNode = nodeName(0)
 			}
 			// The Agent on the original Node is paused. Run antctl from the expected migrated Node instead.
-			err = wait.PollImmediate(200*time.Millisecond, 15*time.Second, func() (done bool, err error) {
+			err = wait.PollUntilContextTimeout(context.Background(), 200*time.Millisecond, 15*time.Second, true, func(ctx context.Context) (done bool, err error) {
 				assignedNode, err := data.getServiceAssignedNode(expectedMigratedNode, service)
 				if err != nil {
 					return false, nil
@@ -600,7 +601,7 @@ func testExternalIPAccess(t *testing.T, data *TestData) {
 			waitExternalIPConfigured := func(service *v1.Service) (string, string, error) {
 				var ip string
 				var assignedNode string
-				err := wait.PollImmediate(200*time.Millisecond, 5*time.Second, func() (done bool, err error) {
+				err := wait.PollUntilContextTimeout(context.Background(), 200*time.Millisecond, 5*time.Second, true, func(ctx context.Context) (done bool, err error) {
 					service, err = data.clientset.CoreV1().Services(service.Namespace).Get(context.TODO(), service.Name, metav1.GetOptions{})
 					if err != nil {
 						return false, err
@@ -701,7 +702,7 @@ func (data *TestData) getServiceAssignedNode(node string, service *v1.Service) (
 	if err != nil {
 		return "", err
 	}
-	var serviceExternalIPInfo []querier.ServiceExternalIPInfo
+	var serviceExternalIPInfo []apis.ServiceExternalIPInfo
 	if err := json.Unmarshal([]byte(stdout), &serviceExternalIPInfo); err != nil {
 		return "", err
 	}
@@ -713,7 +714,7 @@ func (data *TestData) getServiceAssignedNode(node string, service *v1.Service) (
 
 func (data *TestData) waitForServiceConfigured(service *v1.Service, expectedExternalIP string, expectedNodeName string) (*v1.Service, string, error) {
 	var assignedNode string
-	err := wait.PollImmediate(200*time.Millisecond, 15*time.Second, func() (done bool, err error) {
+	err := wait.PollUntilContextTimeout(context.Background(), 200*time.Millisecond, 15*time.Second, true, func(ctx context.Context) (done bool, err error) {
 		service, err = data.clientset.CoreV1().Services(service.Namespace).Get(context.TODO(), service.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, err

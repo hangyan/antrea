@@ -321,8 +321,14 @@ function run_test {
   coverage_args=""
   flow_visibility_args=""
 
+
   # used for PacketSampling tests.
   cat "$SFTP_DEPLOYMENT_YML" | docker exec -i kind-control-plane dd of=/root/sftp-deployment.yml
+
+  if $use_non_default_images; then
+    export AGENT_IMG_NAME=${antrea_agent_image}
+    export CONTROLLER_IMG_NAME=${antrea_controller_image}
+  fi
 
   if $coverage; then
       $YML_CMD --encap-mode $current_mode $manifest_args | docker exec -i kind-control-plane dd of=/root/antrea-coverage.yml
@@ -368,7 +374,9 @@ function run_test {
     RUN_OPT="-run $run"
   fi
 
-  EXTRA_ARGS="$vlan_args --external-server-ips $(docker inspect external-server -f '{{.NetworkSettings.Networks.kind.IPAddress}},{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}')"
+  external_server_cid=$(docker ps -f name="^antrea-external-server" --format '{{.ID}}')
+  external_server_ips=$(docker inspect $external_server_cid -f '{{.NetworkSettings.Networks.kind.IPAddress}},{{.NetworkSettings.Networks.kind.GlobalIPv6Address}}')
+  EXTRA_ARGS="$vlan_args --external-server-ips $external_server_ips"
 
   go test -v -timeout=$timeout $RUN_OPT antrea.io/antrea/test/e2e $flow_visibility_args -provider=kind --logs-export-dir=$ANTREA_LOG_DIR --skip-cases=$skiplist $coverage_args $EXTRA_ARGS
 }
