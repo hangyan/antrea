@@ -158,11 +158,16 @@ rules:
       - crd.antrea.io
     resources:
       - packetsamplings
-      - packetsamplings/status
     verbs:
       - get
       - watch
       - list
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetsamplings/status
+    verbs:
+      - get
       - patch
       - update
   - apiGroups:

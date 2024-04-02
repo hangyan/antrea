@@ -642,9 +642,7 @@ func run(o *Options) error {
 			packetSamplingInformer,
 			ofClient,
 			ifaceStore,
-			networkConfig,
 			nodeConfig,
-			serviceCIDRNet,
 			o.enableAntreaProxy,
 		)
 	}

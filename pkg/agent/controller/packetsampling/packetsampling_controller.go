@@ -83,8 +83,9 @@ func getPacketDirectory() string {
 }
 
 type packetSamplingState struct {
-	name                  string
-	tag                   int8
+	name string
+	tag  int8
+	// shouldSyncPackets means this node will be responsible for doing the actual packet capture job.
 	shouldSyncPackets     bool
 	numCapturedPackets    int32
 	maxNumCapturedPackets int32
@@ -108,9 +109,7 @@ type Controller struct {
 	packetSamplingSynced        cache.InformerSynced
 	ofClient                    openflow.Client
 	interfaceStore              interfacestore.InterfaceStore
-	networkConfig               *config.NetworkConfig
 	nodeConfig                  *config.NodeConfig
-	serviceCIDR                 *net.IPNet
 	queue                       workqueue.RateLimitingInterface
 	runningPacketSamplingsMutex sync.RWMutex
 	runningPacketSamplings      map[int8]*packetSamplingState
@@ -126,9 +125,7 @@ func NewPacketSamplingController(
 	packetSamplingInformer crdinformers.PacketSamplingInformer,
 	client openflow.Client,
 	interfaceStore interfacestore.InterfaceStore,
-	networkConfig *config.NetworkConfig,
 	nodeConfig *config.NodeConfig,
-	serviceCIDR *net.IPNet,
 	enableAntreaProxy bool,
 ) *Controller {
 	c := &Controller{
@@ -139,9 +136,7 @@ func NewPacketSamplingController(
 		packetSamplingSynced:   packetSamplingInformer.Informer().HasSynced,
 		ofClient:               client,
 		interfaceStore:         interfaceStore,
-		networkConfig:          networkConfig,
 		nodeConfig:             nodeConfig,
-		serviceCIDR:            serviceCIDR,
 		queue:                  workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay), "packetsampling"),
 		runningPacketSamplings: make(map[int8]*packetSamplingState),
 		sftpUploader:           &ftp.SftpUploader{},
@@ -262,9 +257,6 @@ func (c *Controller) validatePacketSampling(ps *crdv1alpha1.PacketSampling) erro
 		destIP := net.ParseIP(ps.Spec.Destination.IP)
 		if destIP == nil {
 			return fmt.Errorf("destination IP %s is not valid", ps.Spec.Destination.IP)
-		}
-		if !c.enableAntreaProxy && c.serviceCIDR.Contains(destIP) {
-			return errors.New("using ClusterIP destination requires AntreaProxy feature enabled")
 		}
 	}
 	return nil
@@ -484,9 +476,6 @@ func (c *Controller) preparePacket(ps *crdv1alpha1.PacketSampling, intf *interfa
 		packet.DestinationMAC = intf.MAC
 	} else if ps.Spec.Destination.IP != "" {
 		packet.DestinationIP = net.ParseIP(ps.Spec.Destination.IP)
-		if packet.DestinationIP == nil {
-			return nil, errors.New("destination IP is not valid")
-		}
 	} else if ps.Spec.Destination.Pod != "" {
 		dstPodInterfaces := c.interfaceStore.GetContainerInterfacesByPod(ps.Spec.Destination.Pod, ps.Spec.Destination.Namespace)
 		if len(dstPodInterfaces) > 0 {

@@ -107,6 +107,44 @@ func TestControllerValidate(t *testing.T) {
 			deniedReason: "destination IP does not match the IP header family",
 		},
 		{
+			name: "Destination IP not valid",
+			newSpec: &crdv1alpha1.PacketSamplingSpec{
+				Source: crdv1alpha1.Source{
+					Namespace: "test-ns",
+					Pod:       "test-pod",
+				},
+				Type: crdv1alpha1.FirstNSampling,
+				FirstNSamplingConfig: &crdv1alpha1.FirstNSamplingConfig{
+					Number: 4,
+				},
+				Destination: crdv1alpha1.Destination{
+					IP: "aaa:111",
+				},
+				Packet: crdv1alpha1.Packet{},
+			},
+			allowed:      false,
+			deniedReason: "destination IP is not valid",
+		},
+		{
+			name: "source IP not valid",
+			newSpec: &crdv1alpha1.PacketSamplingSpec{
+				Destination: crdv1alpha1.Destination{
+					Namespace: "test-ns",
+					Pod:       "test-pod",
+				},
+				Type: crdv1alpha1.FirstNSampling,
+				FirstNSamplingConfig: &crdv1alpha1.FirstNSamplingConfig{
+					Number: 4,
+				},
+				Source: crdv1alpha1.Source{
+					IP: "aaa:111",
+				},
+				Packet: crdv1alpha1.Packet{},
+			},
+			allowed:      false,
+			deniedReason: "source IP is not valid",
+		},
+		{
 			name: "Valid request",
 			newSpec: &crdv1alpha1.PacketSamplingSpec{
 				Source: crdv1alpha1.Source{

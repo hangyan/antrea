@@ -133,8 +133,6 @@ func newFakePacketSamplingController(t *testing.T, runtimeObjects []runtime.Obje
 	addPodInterface(ifaceStore, pod1.Namespace, pod1.Name, pod1IPv4, pod1MAC.String(), int32(ofPortPod1))
 	addPodInterface(ifaceStore, pod2.Namespace, pod2.Name, pod2IPv4, pod2MAC.String(), int32(ofPortPod2))
 
-	_, serviceCIDRNet, _ := net.ParseCIDR("10.96.0.0/12")
-
 	mockOFClient.EXPECT().RegisterPacketInHandler(gomock.Any(), gomock.Any()).Times(1)
 	psController := NewPacketSamplingController(
 		kubeClient,
@@ -144,9 +142,7 @@ func newFakePacketSamplingController(t *testing.T, runtimeObjects []runtime.Obje
 		packetSamplingInformer,
 		mockOFClient,
 		ifaceStore,
-		networkConfig,
 		nodeConfig,
-		serviceCIDRNet,
 		true,
 	)
 	psController.sftpUploader = &testUploader{}

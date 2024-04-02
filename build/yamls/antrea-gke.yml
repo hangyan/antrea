@@ -4396,16 +4396,7 @@ spec:
                     ipHeader:
                       type: object
                       properties:
-                        srcIP:
-                          type: string
-                          oneOf:
-                            - format: ipv4
-                            - format: ipv6
                         protocol:
-                          type: integer
-                          minimum: 0
-                          maximum: 255
-                        ttl:
                           type: integer
                           minimum: 0
                           maximum: 255
@@ -4416,9 +4407,6 @@ spec:
                     ipv6Header:
                       type: object
                       properties:
-                        srcIP:
-                          type: string
-                          format: ipv6
                         nextHeader:
                           type: integer
                           minimum: 0
@@ -5658,7 +5646,7 @@ data:
     # Enable traceflow which provides packet tracing feature to diagnose network issue.
     #  Traceflow: true
 
-    # Enable PacketSampling feature which provides packets sampling(capture) feature to diagnose network issue.
+    # Enable PacketSampling feature which provides packets sampling (capture) feature to diagnose network issue.
     #  PacketSampling: false
 
     # Enable NodePortLocal feature to make the Pods reachable externally through NodePort
@@ -6348,11 +6336,16 @@ rules:
       - crd.antrea.io
     resources:
       - packetsamplings
-      - packetsamplings/status
     verbs:
       - get
       - watch
       - list
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetsamplings/status
+    verbs:
+      - get
       - patch
       - update
   - apiGroups:
@@ -6767,11 +6760,16 @@ rules:
       - crd.antrea.io
     resources:
       - packetsamplings
-      - packetsamplings/status
     verbs:
       - get
       - watch
       - list
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetsamplings/status
+    verbs:
+      - get
       - patch
       - update
   - apiGroups:
@@ -7047,7 +7045,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 7e3f4f2da92fe00cc90e375b37f510ea80392854cf0b9720b751f692dab41334
+        checksum/config: 0823bb51326a77b09c0c863fb95c6a77afb17d486f41125bfc02f74ceb969bc7
       labels:
         app: antrea
         component: antrea-agent
@@ -7283,7 +7281,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 7e3f4f2da92fe00cc90e375b37f510ea80392854cf0b9720b751f692dab41334
+        checksum/config: 0823bb51326a77b09c0c863fb95c6a77afb17d486f41125bfc02f74ceb969bc7
       labels:
         app: antrea
         component: antrea-controller

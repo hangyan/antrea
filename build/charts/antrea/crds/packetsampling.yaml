@@ -79,16 +79,7 @@ spec:
                     ipHeader:
                       type: object
                       properties:
-                        srcIP:
-                          type: string
-                          oneOf:
-                            - format: ipv4
-                            - format: ipv6
                         protocol:
-                          type: integer
-                          minimum: 0
-                          maximum: 255
-                        ttl:
                           type: integer
                           minimum: 0
                           maximum: 255
@@ -99,9 +90,6 @@ spec:
                     ipv6Header:
                       type: object
                       properties:
-                        srcIP:
-                          type: string
-                          format: ipv6
                         nextHeader:
                           type: integer
                           minimum: 0

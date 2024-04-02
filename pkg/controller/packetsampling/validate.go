@@ -82,6 +82,9 @@ func (c *Controller) validate(ps *crdv1alpha1.PacketSampling) (allowed bool, den
 	isIPv6 := ps.Spec.Packet.IPv6Header != nil
 	if ps.Spec.Source.IP != "" {
 		sourceIP := net.ParseIP(ps.Spec.Source.IP)
+		if sourceIP == nil {
+			return false, "source IP is not valid"
+		}
 		if isIPv6 != (sourceIP.To4() == nil) {
 			return false, "source IP does not match the IP header family"
 		}
@@ -89,10 +92,12 @@ func (c *Controller) validate(ps *crdv1alpha1.PacketSampling) (allowed bool, den
 
 	if ps.Spec.Destination.IP != "" {
 		destIP := net.ParseIP(ps.Spec.Destination.IP)
+		if destIP == nil {
+			return false, "destination IP is not valid"
+		}
 		if isIPv6 != (destIP.To4() == nil) {
 			return false, "destination IP does not match the IP header family"
 		}
 	}
-
 	return true, ""
 }

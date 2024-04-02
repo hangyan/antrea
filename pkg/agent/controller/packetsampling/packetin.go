@@ -23,7 +23,6 @@ import (
 	"antrea.io/ofnet/ofctrl"
 	"github.com/google/gopacket"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 
 	"antrea.io/antrea/pkg/agent/openflow"
@@ -41,32 +40,21 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	if shouldSkip {
 		return nil
 	}
-
-	// Retry when update CRD conflict which caused by multiple agents updating one CRD at same time.
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		ps, err := c.packetSamplingInformer.Lister().Get(samplingState.name)
-		if err != nil {
-			return fmt.Errorf("failed to get PacketSampling: %w", err)
-		}
-
-		shouldUpdate := samplingState.shouldSyncPackets && (samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == samplingState.maxNumCapturedPackets)
-		if !shouldUpdate {
-			return nil
-		}
-
-		update := ps.DeepCopy()
-		update.Status.NumCapturedPackets = samplingState.numCapturedPackets
-		_, err = c.crdClient.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), update, v1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to update the PacketSampling: %w", err)
-		}
-		klog.InfoS("Updated PacketSampling", "ps", klog.KObj(ps), "status", update.Status)
+	ps, err := c.packetSamplingInformer.Lister().Get(samplingState.name)
+	if err != nil {
+		return fmt.Errorf("failed to get PacketSampling: %w", err)
+	}
+	shouldUpdate := samplingState.shouldSyncPackets && (samplingState.updateRateLimiter.Allow() || samplingState.numCapturedPackets == samplingState.maxNumCapturedPackets)
+	if !shouldUpdate {
 		return nil
-	})
+	}
+	update := ps.DeepCopy()
+	update.Status.NumCapturedPackets = samplingState.numCapturedPackets
+	_, err = c.crdClient.CrdV1alpha1().PacketSamplings().UpdateStatus(context.TODO(), update, v1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update the PacketSampling: %w", err)
 	}
-
+	klog.InfoS("Updated PacketSampling", "ps", klog.KObj(ps), "status", update.Status)
 	if samplingState != nil {
 		rawData := pktIn.Data.(*util.Buffer).Bytes()
 		ci := gopacket.CaptureInfo{
