@@ -341,8 +341,8 @@ type traceableFeature interface {
 		timeoutSeconds uint16) []binding.Flow
 }
 
-type sampleFeature interface {
-	flowsToSample(dataplaneTag uint8,
+type samplingFeature interface {
+	flowsToSampling(dataplaneTag uint8,
 		ovsMetersAreSupported,
 		senderOnly bool,
 		receiverOnly bool,

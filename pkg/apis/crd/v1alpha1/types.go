@@ -978,20 +978,29 @@ type PacketSampling struct {
 }
 
 type PacketSamplingSpec struct {
-	Timeout              uint16                        `json:"timeout,omitempty"`
-	Type                 PacketSamplingType            `json:"type,omitempty"`
-	FirstNSamplingConfig *FirstNSamplingConfig         `json:"firstNSamplingConfig,omitempty"`
-	Source               Source                        `json:"source,omitempty"`
-	Destination          Destination                   `json:"destination,omitempty"`
-	Packet               Packet                        `json:"packet,omitempty"`
-	FileServer           BundleFileServer              `json:"fileServer,omitempty"`
-	Authentication       BundleServerAuthConfiguration `json:"authentication,omitempty"`
+	Timeout uint16 `json:"timeout,omitempty"`
+	// Type is the sampling type. Currently only FirstN is supported.
+	Type PacketSamplingType `json:"type,omitempty"`
+	// FirstNSamplingConfig contains the config for the FirstN type sampling. The only supported parameter is
+	// `Number` at the moment, means capture the first specified number of  packet in a flow.
+	FirstNSamplingConfig *FirstNSamplingConfig `json:"firstNSamplingConfig,omitempty"`
+	Source               Source                `json:"source,omitempty"`
+	Destination          Destination           `json:"destination,omitempty"`
+	Packet               Packet                `json:"packet,omitempty"`
+	// FileServer the sftp url config for the fileServer. Captured packets will be uploaded to this server.
+	FileServer     BundleFileServer              `json:"fileServer,omitempty"`
+	Authentication BundleServerAuthConfiguration `json:"authentication,omitempty"`
 }
 
 type PacketSamplingStatus struct {
-	Phase              PacketSamplingPhase `json:"phase,omitempty"`
-	Reason             string              `json:"reason,omitempty"`
-	NumCapturedPackets int32               `json:"numCapturedPackets,omitempty"`
-	PacketsPath        string              `json:"packetsPath,omitempty"`
-	StartTime          *metav1.Time        `json:"startTime,omitempty"`
+	Phase PacketSamplingPhase `json:"phase,omitempty"`
+	// Reason recorded the failed reason when the sampling failed.
+	Reason string `json:"reason,omitempty"`
+	// NumCapturedPackets record how many packets has been captured. If it reach the target number, the sampling
+	// can be considered as finished.
+	NumCapturedPackets int32 `json:"numCapturedPackets,omitempty"`
+	// PacketsPath is the path where the captured packets are temporarily stored in the container. It will be
+	// removed after the PacketSampling is deleted.
+	PacketsPath string       `json:"packetsPath,omitempty"`
+	StartTime   *metav1.Time `json:"startTime,omitempty"`
 }

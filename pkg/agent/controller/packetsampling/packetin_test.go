@@ -46,7 +46,7 @@ const (
 )
 
 var (
-	testTag     = int8(1)
+	testTag     = uint8(1)
 	testUID     = "1-2-3-4"
 	testSFTPUrl = "sftp://10.220.175.92:22/root/packetsamplings"
 	// parse to tag(1)
@@ -75,12 +75,12 @@ func generateMatch(regID int, data []byte) openflow15.MatchField {
 	}
 }
 
-func getTestPacketBytes(dstIP string, dscp int8) []byte {
+func getTestPacketBytes(dstIP string, dscp uint8) []byte {
 	ipPacket := &protocol.IPv4{
 		Version:  0x4,
 		IHL:      5,
 		Protocol: uint8(8),
-		DSCP:     uint8(dscp),
+		DSCP:     dscp,
 		Length:   20,
 		NWSrc:    net.IP(pod1IPv4),
 		NWDst:    net.IP(dstIP),
@@ -111,9 +111,7 @@ func generatePacketSampling(name string) *crdv1alpha1.PacketSampling {
 			Name: name,
 			UID:  types.UID(testUID),
 		},
-		Status: crdv1alpha1.PacketSamplingStatus{
-			DataplaneTag: int8(testTag),
-		},
+		Status: crdv1alpha1.PacketSamplingStatus{},
 		Spec: crdv1alpha1.PacketSamplingSpec{
 			FirstNSamplingConfig: &crdv1alpha1.FirstNSamplingConfig{
 				Number: 5,
@@ -187,7 +185,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 		expectedNum    int32
 	}{
 		{
-			name:       "unrelated packets",
+			name:       "invalid packets",
 			psState:    generateTestPsState("ps-with-invalid-packet", testWriter, 0),
 			expectedPS: generatePacketSampling("ps-with-invalid-packet"),
 			pktIn: &ofctrl.PacketIn{
@@ -240,7 +238,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 			defer close(stopCh)
 			psc.crdInformerFactory.Start(stopCh)
 			psc.crdInformerFactory.WaitForCacheSync(stopCh)
-			psc.runningPacketSamplings[tt.expectedPS.Status.DataplaneTag] = tt.psState
+			psc.runningPacketSamplings[tt.psState.tag] = tt.psState
 
 			err := psc.HandlePacketIn(tt.pktIn)
 			if err == nil {

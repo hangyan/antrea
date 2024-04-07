@@ -18,8 +18,6 @@ import (
 	"context"
 	"time"
 
-	"antrea.io/antrea/pkg/controller/packetsampling"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,6 +66,7 @@ import (
 	"antrea.io/antrea/pkg/controller/externalippool"
 	"antrea.io/antrea/pkg/controller/ipam"
 	controllernetworkpolicy "antrea.io/antrea/pkg/controller/networkpolicy"
+	"antrea.io/antrea/pkg/controller/packetsampling"
 	"antrea.io/antrea/pkg/controller/querier"
 	"antrea.io/antrea/pkg/controller/stats"
 	controllerbundlecollection "antrea.io/antrea/pkg/controller/supportbundlecollection"
@@ -123,7 +122,6 @@ type ExtraConfig struct {
 	networkPolicyStatusController *controllernetworkpolicy.StatusController
 	bundleCollectionController    *controllerbundlecollection.Controller
 	traceflowController           *traceflow.Controller
-	packetSamplingController      *packetsampling.Controller
 }
 
 // Config defines the config for Antrea apiserver.
@@ -168,8 +166,7 @@ func NewConfig(
 	egressController *egress.EgressController,
 	externalIPPoolController *externalippool.ExternalIPPoolController,
 	bundleCollectionController *controllerbundlecollection.Controller,
-	traceflowController *traceflow.Controller,
-	packetSamplingController *packetsampling.Controller) *Config {
+	traceflowController *traceflow.Controller) *Config {
 	return &Config{
 		genericConfig: genericConfig,
 		extraConfig: ExtraConfig{
@@ -191,7 +188,6 @@ func NewConfig(
 			externalIPPoolController:      externalIPPoolController,
 			bundleCollectionController:    bundleCollectionController,
 			traceflowController:           traceflowController,
-			packetSamplingController:      packetSamplingController,
 		},
 	}
 }

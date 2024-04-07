@@ -4400,10 +4400,6 @@ spec:
                           type: integer
                           minimum: 0
                           maximum: 255
-                        flags:
-                          type: integer
-                          minimum: 0
-                          maximum: 255
                     ipv6Header:
                       type: object
                       properties:
@@ -4411,24 +4407,9 @@ spec:
                           type: integer
                           minimum: 0
                           maximum: 65535
-                        hopLimit:
-                          type: integer
-                          minimum: 0
-                          maximum: 65535
                     transportHeader:
                       type: object
                       properties:
-                        icmp:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                              minimum: 0
-                              maximum: 65535
-                            sequence:
-                              type: integer
-                              minimum: 0
-                              maximum: 65535
                         udp:
                           type: object
                           properties:
@@ -4489,8 +4470,6 @@ spec:
               properties:
                 reason:
                   type: string
-                dataplaneTag:
-                  type: integer
                 phase:
                   type: string
                 startTime:
@@ -6057,9 +6036,6 @@ data:
     # Enable traceflow which provides packet tracing feature to diagnose network issue.
     #  Traceflow: true
 
-    # Enable PacketSampling feature which provides packets sampling (capture) feature to diagnose network issue.
-    #  PacketSampling: false
-
     # Enable Antrea ClusterNetworkPolicy feature to complement K8s NetworkPolicy for cluster admins
     # to define security policies which apply to the entire cluster, and Antrea NetworkPolicy
     # feature that supports priorities, ExternalEntities, FQDN rules and more.
@@ -6759,22 +6735,6 @@ rules:
   - apiGroups:
       - crd.antrea.io
     resources:
-      - packetsamplings
-    verbs:
-      - get
-      - watch
-      - list
-  - apiGroups:
-      - crd.antrea.io
-    resources:
-      - packetsamplings/status
-    verbs:
-      - get
-      - patch
-      - update
-  - apiGroups:
-      - crd.antrea.io
-    resources:
       - externalentities
       - clustergroups
       - groups
@@ -7045,7 +7005,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: b56f285812f47151ea30bded1852661e789f6e8f058622784023e34462d11924
+        checksum/config: 9f89f6497340a41f1c461aefd52c1c4d255ecc7494a180d88b645e06153dafa9
       labels:
         app: antrea
         component: antrea-agent
@@ -7281,7 +7241,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: b56f285812f47151ea30bded1852661e789f6e8f058622784023e34462d11924
+        checksum/config: 9f89f6497340a41f1c461aefd52c1c4d255ecc7494a180d88b645e06153dafa9
       labels:
         app: antrea
         component: antrea-controller
@@ -7660,6 +7620,21 @@ webhooks:
         apiGroups: ["crd.antrea.io"]
         apiVersions: ["v1alpha1"]
         resources: ["traceflows"]
+        scope: "Cluster"
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    timeoutSeconds: 5
+  - name: "packetsamplingvalidator.antrea.io"
+    clientConfig:
+      service:
+        name: "antrea"
+        namespace: kube-system
+        path: "/validate/packetsampling"
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["crd.antrea.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["packetsampling"]
         scope: "Cluster"
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None

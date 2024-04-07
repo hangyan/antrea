@@ -419,6 +419,7 @@ func newFakeClientWithBridge(
 		o.enableMulticluster,
 		NewGroupAllocator(),
 		false,
+		false,
 		defaultPacketInRate)
 
 	// Meters must be supported to enable Egress traffic shaping.
@@ -2155,7 +2156,7 @@ func Test_client_setBasePacketOutBuilder(t *testing.T) {
 }
 
 func prepareSetBasePacketOutBuilder(ctrl *gomock.Controller, success bool) *client {
-	ofClient := NewClient(bridgeName, bridgeMgmtAddr, nodeiptest.NewFakeNodeIPChecker(), true, true, false, false, false, false, false, false, false, false, false, false, false, nil, false, defaultPacketInRate)
+	ofClient := NewClient(bridgeName, bridgeMgmtAddr, nodeiptest.NewFakeNodeIPChecker(), true, true, false, false, false, false, false, false, false, false, false, false, false, nil, false, false, defaultPacketInRate)
 	m := ovsoftest.NewMockBridge(ctrl)
 	ofClient.bridge = m
 	bridge := binding.OFBridge{}

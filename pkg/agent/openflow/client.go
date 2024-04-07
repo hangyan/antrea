@@ -934,7 +934,7 @@ func (c *client) generatePipelines() {
 			c.enableL7FlowExporter)
 		c.activatedFeatures = append(c.activatedFeatures, c.featurePodConnectivity)
 		c.traceableFeatures = append(c.traceableFeatures, c.featurePodConnectivity)
-		c.sampleFeatures = append(c.sampleFeatures, c.featurePodConnectivity)
+		c.samplingFeatures = append(c.samplingFeatures, c.featurePodConnectivity)
 
 		c.featureService = newFeatureService(c.cookieAllocator,
 			c.nodeIPChecker,
@@ -950,7 +950,7 @@ func (c *client) generatePipelines() {
 			c.connectUplinkToBridge)
 		c.activatedFeatures = append(c.activatedFeatures, c.featureService)
 		c.traceableFeatures = append(c.traceableFeatures, c.featureService)
-		c.sampleFeatures = append(c.sampleFeatures, c.featureService)
+		c.samplingFeatures = append(c.samplingFeatures, c.featureService)
 	}
 
 	if c.nodeType == config.ExternalNode {
@@ -998,8 +998,10 @@ func (c *client) generatePipelines() {
 	c.featureTraceflow = newFeatureTraceflow()
 	c.activatedFeatures = append(c.activatedFeatures, c.featureTraceflow)
 
-	c.featurePacketSampling = newFeaturePacketSampling()
-	c.activatedFeatures = append(c.activatedFeatures, c.featurePacketSampling)
+	if c.enablePacketSampling {
+		c.featurePacketSampling = newFeaturePacketSampling()
+		c.activatedFeatures = append(c.activatedFeatures, c.featurePacketSampling)
+	}
 
 	// Pipelines to generate.
 	pipelineIDs := []binding.PipelineID{pipelineRoot, pipelineIP}
@@ -1248,9 +1250,8 @@ func (c *client) SendTraceflowPacket(dataplaneTag uint8, packet *binding.Packet,
 func (c *client) InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
 	var flows []binding.Flow
-
-	for _, f := range c.sampleFeatures {
-		flows = append(flows, f.flowsToSample(dataplaneTag,
+	for _, f := range c.samplingFeatures {
+		flows = append(flows, f.flowsToSampling(dataplaneTag,
 			c.ovsMetersAreSupported,
 			senderOnly,
 			receiverOnly,
@@ -1260,7 +1261,6 @@ func (c *client) InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly, rece
 			timeoutSeconds)...)
 	}
 	return c.addFlows(c.featurePacketSampling.cachedFlows, cacheKey, flows)
-
 }
 
 func (c *client) InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedOnly, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
@@ -1281,7 +1281,7 @@ func (c *client) InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedO
 
 func (c *client) UninstallTraceflowFlows(dataplaneTag uint8) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
-	return c.deleteFlows(c.featurePacketSampling.cachedFlows, cacheKey)
+	return c.deleteFlows(c.featureTraceflow.cachedFlows, cacheKey)
 }
 
 func (c *client) UninstallPacketSamplingFlows(dataplaneTag uint8) error {

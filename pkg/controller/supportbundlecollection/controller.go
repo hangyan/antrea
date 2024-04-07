@@ -37,8 +37,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	"antrea.io/antrea/pkg/util/ftp"
-
 	"antrea.io/antrea/pkg/apis/controlplane"
 	"antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	"antrea.io/antrea/pkg/apiserver/storage"
@@ -46,6 +44,7 @@ import (
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
 	crdlisters "antrea.io/antrea/pkg/client/listers/crd/v1alpha1"
 	"antrea.io/antrea/pkg/controller/types"
+	"antrea.io/antrea/pkg/util/ftp"
 	"antrea.io/antrea/pkg/util/k8s"
 )
 

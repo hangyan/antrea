@@ -67,7 +67,7 @@ const (
 	// Allows to trace path from a generated packet.
 	Traceflow featuregate.Feature = "Traceflow"
 
-	// alpha: v1.16
+	// alpha: v2.0
 	// Allows to capture sampling packets for a flow.
 	PacketSampling featuregate.Feature = "PacketSampling"
 

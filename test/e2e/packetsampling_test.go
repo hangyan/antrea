@@ -26,10 +26,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
+	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	agentconfig "antrea.io/antrea/pkg/config/agent"
 	controllerconfig "antrea.io/antrea/pkg/config/controller"
-
-	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	"antrea.io/antrea/pkg/features"
 )
 

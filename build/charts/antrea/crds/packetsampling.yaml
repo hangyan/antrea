@@ -83,10 +83,6 @@ spec:
                           type: integer
                           minimum: 0
                           maximum: 255
-                        flags:
-                          type: integer
-                          minimum: 0
-                          maximum: 255
                     ipv6Header:
                       type: object
                       properties:
@@ -94,24 +90,9 @@ spec:
                           type: integer
                           minimum: 0
                           maximum: 65535
-                        hopLimit:
-                          type: integer
-                          minimum: 0
-                          maximum: 65535
                     transportHeader:
                       type: object
                       properties:
-                        icmp:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                              minimum: 0
-                              maximum: 65535
-                            sequence:
-                              type: integer
-                              minimum: 0
-                              maximum: 65535
                         udp:
                           type: object
                           properties:
@@ -172,8 +153,6 @@ spec:
               properties:
                 reason:
                   type: string
-                dataplaneTag:
-                  type: integer
                 phase:
                   type: string
                 startTime:

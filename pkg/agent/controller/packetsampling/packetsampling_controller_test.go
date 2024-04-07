@@ -188,8 +188,7 @@ func TestErrPacketSamplingCRD(t *testing.T) {
 			},
 		},
 		Status: crdv1alpha1.PacketSamplingStatus{
-			Phase:        crdv1alpha1.PacketSamplingRunning,
-			DataplaneTag: 1,
+			Phase: crdv1alpha1.PacketSamplingRunning,
 		},
 	}
 	expectedPS := ps
@@ -213,22 +212,6 @@ func TestPreparePacket(t *testing.T) {
 		expectedPacket *binding.Packet
 		expectedErr    string
 	}{
-		{
-			name: "invalid destination IPv4",
-			ps: &crdv1alpha1.PacketSampling{
-				ObjectMeta: metav1.ObjectMeta{Name: "ps1", UID: "uid1"},
-				Spec: crdv1alpha1.PacketSamplingSpec{
-					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
-					},
-					Destination: crdv1alpha1.Destination{
-						IP: "1.1.1.300",
-					},
-				},
-			},
-			expectedErr: "destination IP is not valid",
-		},
 		{
 			name: "empty destination",
 			ps: &crdv1alpha1.PacketSampling{
@@ -501,7 +484,7 @@ func TestPreparePacket(t *testing.T) {
 func TestSyncPacketSampling(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
-	defaultFS.MkdirAll("/tmp/packetsampling/packets", 0755)
+	defaultFS.MkdirAll("/tmp/antrea/packetsampling/packets", 0755)
 	file, err := defaultFS.Create(uidToPath(testUID))
 	if err != nil {
 		t.Fatal("create pcapng file error: ", err)
@@ -520,7 +503,7 @@ func TestSyncPacketSampling(t *testing.T) {
 		expectedCalls func(mockOFClient *openflowtest.MockClient)
 	}{
 		{
-			name: "packetsampling in running phase",
+			name: "start packetsampling ",
 			ps: &crdv1alpha1.PacketSampling{
 				ObjectMeta: metav1.ObjectMeta{Name: "ps1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketSamplingSpec{
@@ -532,10 +515,6 @@ func TestSyncPacketSampling(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-				},
-				Status: crdv1alpha1.PacketSamplingStatus{
-					Phase:        crdv1alpha1.PacketSamplingRunning,
-					DataplaneTag: 1,
 				},
 			},
 			existingState: &packetSamplingState{
@@ -569,8 +548,7 @@ func TestSyncPacketSampling(t *testing.T) {
 					},
 				},
 				Status: crdv1alpha1.PacketSamplingStatus{
-					Phase:        crdv1alpha1.PacketSamplingFailed,
-					DataplaneTag: 1,
+					Phase: crdv1alpha1.PacketSamplingFailed,
 				},
 			},
 			existingState: &packetSamplingState{
@@ -595,7 +573,7 @@ func TestSyncPacketSampling(t *testing.T) {
 			psc.crdInformerFactory.WaitForCacheSync(stopCh)
 
 			if ps.existingState != nil {
-				psc.runningPacketSamplings[ps.ps.Status.DataplaneTag] = ps.existingState
+				psc.runningPacketSamplings[ps.existingState.tag] = ps.existingState
 			}
 
 			if ps.expectedCalls != nil {
@@ -604,7 +582,7 @@ func TestSyncPacketSampling(t *testing.T) {
 
 			err := psc.syncPacketSampling(ps.ps.Name)
 			require.NoError(t, err)
-			assert.Equal(t, ps.newState, psc.runningPacketSamplings[ps.ps.Status.DataplaneTag])
+			assert.Equal(t, ps.newState, psc.runningPacketSamplings[ps.existingState.tag])
 		})
 	}
 }
@@ -614,13 +592,13 @@ func TestSyncPacketSampling(t *testing.T) {
 func TestPacketSamplingControllerRun(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
-	defaultFS.MkdirAll("/tmp/packetsampling/packets", 0755)
+	defaultFS.MkdirAll("/tmp/antrea/packetsampling/packets", 0755)
 	ps := struct {
 		name     string
 		ps       *crdv1alpha1.PacketSampling
 		newState *packetSamplingState
 	}{
-		name: "packetsampling in running phase",
+		name: "start packetsampling",
 		ps: &crdv1alpha1.PacketSampling{
 			ObjectMeta: metav1.ObjectMeta{Name: "ps1", UID: "uid1"},
 			Spec: crdv1alpha1.PacketSamplingSpec{
@@ -637,11 +615,8 @@ func TestPacketSamplingControllerRun(t *testing.T) {
 					Number: 5,
 				},
 			},
-			Status: crdv1alpha1.PacketSamplingStatus{
-				Phase:        crdv1alpha1.PacketSamplingRunning,
-				DataplaneTag: 1,
-			},
 		},
+		newState: &packetSamplingState{tag: 1},
 	}
 
 	psc := newFakePacketSamplingController(t, nil, []runtime.Object{ps.ps}, nil, nil)
@@ -651,7 +626,9 @@ func TestPacketSamplingControllerRun(t *testing.T) {
 	psc.crdInformerFactory.WaitForCacheSync(stopCh)
 	psc.informerFactory.Start(stopCh)
 	psc.informerFactory.WaitForCacheSync(stopCh)
-	psc.mockOFClient.EXPECT().InstallPacketSamplingFlows(uint8(ps.ps.Status.DataplaneTag), false, false, &binding.Packet{DestinationIP: net.ParseIP(pod2.Status.PodIP), IPProto: protocol.Type_ICMP}, nil, ofPortPod1, uint16(crdv1alpha1.DefaultPacketSamplingTimeout))
+	psc.mockOFClient.EXPECT().InstallPacketSamplingFlows(ps.newState.tag, false, false,
+		&binding.Packet{DestinationIP: net.ParseIP(pod2.Status.PodIP), IPProto: protocol.Type_ICMP},
+		nil, ofPortPod1, crdv1alpha1.DefaultPacketSamplingTimeout)
 	go psc.Run(stopCh)
 	time.Sleep(300 * time.Millisecond)
 }
@@ -659,7 +636,7 @@ func TestPacketSamplingControllerRun(t *testing.T) {
 func TestProcessPacketSamplingItem(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
-	defaultFS.MkdirAll("/tmp/packetsampling/packets", 0755)
+	defaultFS.MkdirAll("/tmp/antrea/packetsampling/packets", 0755)
 	pc := struct {
 		ps           *crdv1alpha1.PacketSampling
 		ofPort       uint32
@@ -683,10 +660,6 @@ func TestProcessPacketSamplingItem(t *testing.T) {
 				},
 				Type: crdv1alpha1.FirstNSampling,
 			},
-			Status: crdv1alpha1.PacketSamplingStatus{
-				Phase:        crdv1alpha1.PacketSamplingRunning,
-				DataplaneTag: 1,
-			},
 		},
 		ofPort: ofPortPod1,
 		packet: &binding.Packet{
@@ -702,13 +675,13 @@ func TestProcessPacketSamplingItem(t *testing.T) {
 	psc.crdInformerFactory.Start(stopCh)
 	psc.crdInformerFactory.WaitForCacheSync(stopCh)
 
-	psc.mockOFClient.EXPECT().InstallPacketSamplingFlows(uint8(pc.ps.Status.DataplaneTag), false, pc.receiverOnly, pc.packet, nil, pc.ofPort, uint16(crdv1alpha1.DefaultPacketSamplingTimeout))
+	psc.mockOFClient.EXPECT().InstallPacketSamplingFlows(uint8(1), false, pc.receiverOnly, pc.packet, nil, pc.ofPort, uint16(crdv1alpha1.DefaultPacketSamplingTimeout))
 	psc.enqueuePacketSampling(pc.ps)
 	got := psc.processPacketSamplingItem()
 	assert.Equal(t, pc.expected, got)
 }
 
-func TestValidateTraceflow(t *testing.T) {
+func TestValidatePacketSampling(t *testing.T) {
 	pss := []struct {
 		name               string
 		ps                 *crdv1alpha1.PacketSampling
@@ -725,17 +698,6 @@ func TestValidateTraceflow(t *testing.T) {
 				},
 			},
 			expectedErr: "using Service destination requires AntreaProxy feature enabled",
-		},
-		{
-			name: "AntreaProxy disabled with ClusterIP destination",
-			ps: &crdv1alpha1.PacketSampling{
-				Spec: crdv1alpha1.PacketSamplingSpec{
-					Destination: crdv1alpha1.Destination{
-						IP: "10.96.1.1",
-					},
-				},
-			},
-			expectedErr: "using ClusterIP destination requires AntreaProxy feature enabled",
 		},
 	}
 
@@ -755,6 +717,7 @@ func TestStartPacketSampling(t *testing.T) {
 	tcs := []struct {
 		name           string
 		ps             *crdv1alpha1.PacketSampling
+		state          *packetSamplingState
 		ofPort         uint32
 		receiverOnly   bool
 		packet         *binding.Packet
@@ -782,10 +745,10 @@ func TestStartPacketSampling(t *testing.T) {
 				},
 
 				Status: crdv1alpha1.PacketSamplingStatus{
-					Phase:        crdv1alpha1.PacketSamplingRunning,
-					DataplaneTag: 1,
+					Phase: crdv1alpha1.PacketSamplingRunning,
 				},
 			},
+			state:  &packetSamplingState{tag: 1},
 			ofPort: ofPortPod1,
 			packet: &binding.Packet{
 				SourceIP:       net.ParseIP(pod1IPv4),
@@ -822,10 +785,10 @@ func TestStartPacketSampling(t *testing.T) {
 					},
 				},
 				Status: crdv1alpha1.PacketSamplingStatus{
-					Phase:        crdv1alpha1.PacketSamplingRunning,
-					DataplaneTag: 1,
+					Phase: crdv1alpha1.PacketSamplingRunning,
 				},
 			},
+			state:  &packetSamplingState{tag: 2},
 			ofPort: ofPortPod1,
 			packet: &binding.Packet{
 				SourceIP:      net.ParseIP(pod1IPv4),
@@ -836,7 +799,7 @@ func TestStartPacketSampling(t *testing.T) {
 				ICMPType:      8,
 			},
 			expectedCalls: func(mockOFClient *openflowtest.MockClient) {
-				mockOFClient.EXPECT().InstallPacketSamplingFlows(uint8(1), true, false, &binding.Packet{
+				mockOFClient.EXPECT().InstallPacketSamplingFlows(uint8(2), true, false, &binding.Packet{
 					DestinationIP: net.ParseIP(dstIPv4),
 					IPProto:       1,
 				}, nil, ofPortPod1, crdv1alpha1.DefaultPacketSamplingTimeout)
@@ -859,7 +822,7 @@ func TestStartPacketSampling(t *testing.T) {
 				klog.LogToStderr(true)
 			}()
 
-			err := tfc.startPacketSampling(tt.ps)
+			err := tfc.startPacketSampling(tt.ps, tt.state)
 			if tt.expectedErr != "" {
 				assert.ErrorContains(t, err, tt.expectedErr)
 			} else {

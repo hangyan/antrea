@@ -1,4 +1,4 @@
-// Copyright 2023 Antrea Authors
+// Copyright 2024 Antrea Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -161,19 +161,6 @@ func TestControllerValidate(t *testing.T) {
 	}
 	for _, ps := range tests {
 		t.Run(ps.name, func(t *testing.T) {
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-
-			controller := newController()
-			controller.informerFactory.Start(stopCh)
-			controller.crdInformerFactory.Start(stopCh)
-			// Must wait for cache sync, otherwise resource creation events will be missing if the resources are created
-			// in-between list and watch call of an informer. This is because fake clientset doesn't support watching with
-			// resourceVersion. A watcher of fake clientset only gets events that happen after the watcher is created.
-			controller.informerFactory.WaitForCacheSync(stopCh)
-			controller.crdInformerFactory.WaitForCacheSync(stopCh)
-			go controller.Run(stopCh)
-
 			var request *admv1.AdmissionRequest
 			if ps.oldSpec != nil && ps.newSpec != nil {
 				request = &admv1.AdmissionRequest{
@@ -200,7 +187,7 @@ func TestControllerValidate(t *testing.T) {
 				}
 			}
 
-			response := controller.Validate(review)
+			response := Validate(review)
 			assert.Equal(t, expectedResponse, response)
 		})
 	}

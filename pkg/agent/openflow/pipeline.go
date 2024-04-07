@@ -402,6 +402,7 @@ type client struct {
 	enableL7FlowExporter       bool
 	enableMulticluster         bool
 	enablePrometheusMetrics    bool
+	enablePacketSampling       bool
 	connectUplinkToBridge      bool
 	nodeType                   config.NodeType
 	roundInfo                  types.RoundInfo
@@ -422,7 +423,7 @@ type client struct {
 	traceableFeatures []traceableFeature
 
 	featurePacketSampling *featurePacketSampling
-	sampleFeatures        []sampleFeature
+	samplingFeatures      []samplingFeature
 
 	pipelines map[binding.PipelineID]binding.Pipeline
 
@@ -886,9 +887,9 @@ func matchTransportHeader(packet *binding.Packet, flowBuilder binding.FlowBuilde
 	return flowBuilder
 }
 
-// flowsToSample generates flows for packet sampling. DSCP flag is used as a mark for the target flow.
+// flowsToSampling generates flows for packet sampling. DSCP flag is used as a mark for the target flow.
 // When output, the flag will be cleared.
-func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
+func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 	ovsMetersAreSupported,
 	senderOnly bool,
 	receiverOnly bool,
@@ -908,7 +909,6 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 			flowBuilder = ConntrackStateTable.ofTable.BuildFlow(priorityHigh).
 				Cookie(cookieID).
 				MatchInPort(ofPort).
-				//MatchCTStateNew(true).
 				MatchCTStateTrk(true).
 				Action().LoadToRegField(PacketSamplingMark, tag).
 				SetHardTimeout(timeout).
@@ -922,7 +922,6 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 				tmpFlowBuilder := ConntrackStateTable.ofTable.BuildFlow(priorityHigh).
 					Cookie(cookieID).
 					MatchInPort(ofPort).
-					// MatchCTStateNew(false).
 					MatchCTStateTrk(true).
 					Action().LoadToRegField(PacketSamplingMark, tag).
 					SetHardTimeout(timeout).
@@ -935,7 +934,6 @@ func (f *featurePodConnectivity) flowsToSample(dataplaneTag uint8,
 	} else {
 		flowBuilder = L2ForwardingCalcTable.ofTable.BuildFlow(priorityHigh).
 			Cookie(cookieID).
-			//MatchCTStateNew(true).
 			MatchCTStateTrk(true).
 			MatchDstMAC(packet.DestinationMAC).
 			Action().LoadToRegField(TargetOFPortField, ofPort).
@@ -1242,8 +1240,8 @@ func (f *featurePodConnectivity) flowsToTrace(dataplaneTag uint8,
 	return flows
 }
 
-// flowsToTrace is used to generate flows for PacketSampling in featureService.
-func (f *featureService) flowsToSample(dataplaneTag uint8,
+// flowsToSampling is used to generate flows for PacketSampling in featureService.
+func (f *featureService) flowsToSampling(dataplaneTag uint8,
 	ovsMetersAreSupported,
 	senderOnly bool,
 	receiverOnly bool,
@@ -3074,6 +3072,7 @@ func NewClient(bridgeName string,
 	enableMulticluster bool,
 	groupIDAllocator GroupAllocator,
 	enablePrometheusMetrics bool,
+	enablePacketSampling bool,
 	packetInRate int,
 ) *client {
 	bridge := binding.NewOFBridge(bridgeName, mgmtAddr)
@@ -3093,6 +3092,7 @@ func NewClient(bridgeName string,
 		enableL7FlowExporter:       enableL7FlowExporter,
 		enableMulticluster:         enableMulticluster,
 		enablePrometheusMetrics:    enablePrometheusMetrics,
+		enablePacketSampling:       enablePacketSampling,
 		connectUplinkToBridge:      connectUplinkToBridge,
 		pipelines:                  make(map[binding.PipelineID]binding.Pipeline),
 		packetInHandlers:           map[uint8]PacketInHandler{},

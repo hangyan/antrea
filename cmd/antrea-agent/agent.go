@@ -31,6 +31,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	"antrea.io/antrea/pkg/agent/controller/packetsampling"
+
 	mcinformers "antrea.io/antrea/multicluster/pkg/client/informers/externalversions"
 	"antrea.io/antrea/pkg/agent"
 	"antrea.io/antrea/pkg/agent/apiserver"
@@ -43,7 +45,6 @@ import (
 	"antrea.io/antrea/pkg/agent/controller/networkpolicy"
 	"antrea.io/antrea/pkg/agent/controller/networkpolicy/l7engine"
 	"antrea.io/antrea/pkg/agent/controller/noderoute"
-	"antrea.io/antrea/pkg/agent/controller/packetsampling"
 	"antrea.io/antrea/pkg/agent/controller/serviceexternalip"
 	"antrea.io/antrea/pkg/agent/controller/traceflow"
 	"antrea.io/antrea/pkg/agent/controller/trafficcontrol"
@@ -181,6 +182,7 @@ func run(o *Options) error {
 		enableMulticlusterGW,
 		groupIDAllocator,
 		*o.config.EnablePrometheusMetrics,
+		features.DefaultFeatureGate.Enabled(features.PacketSampling),
 		o.config.PacketInRate,
 	)
 

@@ -87,7 +87,7 @@ var (
 )
 
 func getPacketDirectory() string {
-	return filepath.Join(os.TempDir(), "packetsampling", "packets")
+	return filepath.Join(os.TempDir(), "antrea", "packetsampling", "packets")
 }
 
 type packetSamplingState struct {
@@ -332,16 +332,17 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling, psState
 	receiverOnly := false
 	senderOnly := false
 	var pod, ns string
-	if ps.Spec.Destination.Pod != "" {
-		pod = ps.Spec.Destination.Pod
-		ns = ps.Spec.Destination.Namespace
-		if ps.Spec.Source.Pod == "" {
-			receiverOnly = true
-		}
-	} else {
+
+	if ps.Spec.Source.Pod != "" {
 		pod = ps.Spec.Source.Pod
 		ns = ps.Spec.Source.Namespace
-		senderOnly = true
+		if ps.Spec.Destination.Pod == "" {
+			senderOnly = true
+		}
+	} else {
+		pod = ps.Spec.Destination.Pod
+		ns = ps.Spec.Destination.Namespace
+		receiverOnly = true
 	}
 
 	podInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pod, ns)
@@ -372,20 +373,18 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling, psState
 	psState.maxNumCapturedPackets = ps.Spec.FirstNSamplingConfig.Number
 	psState.isSender = isSender
 
-	exists, err := fileExists(string(ps.UID))
+	filePath := uidToPath(string(ps.UID))
+	exists, err := fileExists(filePath)
 	if err != nil {
 		return fmt.Errorf("couldn't check if the file exists: %w", err)
-
 	}
 	if exists {
 		return fmt.Errorf("packet file already exists. this may be due to an unexpected termination")
 	}
-
-	file, err := createPcapngFile(string(ps.UID))
+	file, err := defaultFS.Create(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to create pcapng file: %w", err)
 	}
-
 	writer, err := pcapgo.NewNgWriter(file, layers.LinkTypeEthernet)
 	if err != nil {
 		return fmt.Errorf("couldn't init pcap writer: %w", err)
@@ -417,12 +416,8 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling, psState
 
 }
 
-func createPcapngFile(uid string) (afero.File, error) {
-	return defaultFS.Create(uidToPath(uid))
-}
-
-func fileExists(uid string) (bool, error) {
-	_, err := defaultFS.Stat(uidToPath(uid))
+func fileExists(path string) (bool, error) {
+	_, err := defaultFS.Stat(path)
 	if err == nil {
 		return true, nil
 	} else {

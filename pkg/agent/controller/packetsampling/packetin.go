@@ -33,11 +33,11 @@ import (
 // Once the total number reaches the target one, the PacketSampling will be marked as Succeed.
 func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	klog.V(4).InfoS("PacketIn for PacketSampling", "PacketIn", pktIn.PacketIn)
-	samplingState, shouldSkip, err := c.parsePacketIn(pktIn)
+	samplingState, samplingFinished, err := c.parsePacketIn(pktIn)
 	if err != nil {
 		return fmt.Errorf("parsePacketIn error: %v", err)
 	}
-	if shouldSkip {
+	if samplingFinished {
 		return nil
 	}
 	ps, err := c.packetSamplingInformer.Lister().Get(samplingState.name)
@@ -54,33 +54,32 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	if err != nil {
 		return fmt.Errorf("failed to update the PacketSampling: %w", err)
 	}
-	klog.InfoS("Updated PacketSampling", "ps", klog.KObj(ps), "status", update.Status)
-	if samplingState != nil {
-		rawData := pktIn.Data.(*util.Buffer).Bytes()
-		ci := gopacket.CaptureInfo{
-			Timestamp:     time.Now(),
-			CaptureLength: len(rawData),
-			Length:        len(rawData),
-		}
-		err = samplingState.pcapngWriter.WritePacket(ci, rawData)
-		if err != nil {
-			return fmt.Errorf("couldn't write packet: %w", err)
-		}
+	klog.InfoS("Updated PacketSampling", "packetsampling", klog.KObj(ps), "status", update.Status)
 
-		if samplingState.numCapturedPackets == samplingState.maxNumCapturedPackets && samplingState.shouldSyncPackets {
-			ps, err := c.packetSamplingLister.Get(samplingState.name)
-			if err != nil {
-				return fmt.Errorf("get PacketSampling failed: %w", err)
-			}
-			return c.uploadPacketsFile(ps)
-		}
+	rawData := pktIn.Data.(*util.Buffer).Bytes()
+	ci := gopacket.CaptureInfo{
+		Timestamp:     time.Now(),
+		CaptureLength: len(rawData),
+		Length:        len(rawData),
 	}
+	err = samplingState.pcapngWriter.WritePacket(ci, rawData)
+	if err != nil {
+		return fmt.Errorf("couldn't write packet: %w", err)
+	}
+	if samplingState.numCapturedPackets == samplingState.maxNumCapturedPackets && samplingState.shouldSyncPackets {
+		ps, err := c.packetSamplingLister.Get(samplingState.name)
+		if err != nil {
+			return fmt.Errorf("get PacketSampling failed: %w", err)
+		}
+		return c.uploadPacketsFile(ps)
+	}
+
 	return nil
 }
 
 // parsePacketIn parses the packet-in message and returns
 // 1. the sampling state of the PacketSampling (on sampling mode)
-func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingState, shouldSkip bool, _ error) {
+func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingState, samplingFinished bool, _ error) {
 	var tag uint8
 	samplingState := packetSamplingState{}
 	matchers := pktIn.GetMatches()
@@ -93,7 +92,7 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingSta
 		tag = uint8(value)
 	}
 	c.runningPacketSamplingsMutex.RLock()
-	psState, exists := c.runningPacketSamplings[int8(tag)]
+	psState, exists := c.runningPacketSamplings[tag]
 	c.runningPacketSamplingsMutex.RUnlock()
 	if exists {
 		if psState.numCapturedPackets == psState.maxNumCapturedPackets {
