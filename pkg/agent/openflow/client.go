@@ -234,8 +234,14 @@ type Client interface {
 	// InstallTraceflowFlows installs flows for a Traceflow request.
 	InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedOnly, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error
 
+	// InstallPacketSamplingFlows installs flows for a Packet Sampling request.
+	InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly bool, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error
+
 	// UninstallTraceflowFlows uninstalls flows for a Traceflow request.
 	UninstallTraceflowFlows(dataplaneTag uint8) error
+
+	// UninstallPacketSamplingFlows uninstalls flows for a Packet Sampling request.
+	UninstallPacketSamplingFlows(dataplaneTag uint8) error
 
 	// GetPolicyInfoFromConjunction returns the following policy information for the provided conjunction ID:
 	// NetworkPolicy reference, OF priority, rule name, label
@@ -928,6 +934,7 @@ func (c *client) generatePipelines() {
 			c.enableL7FlowExporter)
 		c.activatedFeatures = append(c.activatedFeatures, c.featurePodConnectivity)
 		c.traceableFeatures = append(c.traceableFeatures, c.featurePodConnectivity)
+		c.sampleFeatures = append(c.sampleFeatures, c.featurePodConnectivity)
 
 		c.featureService = newFeatureService(c.cookieAllocator,
 			c.nodeIPChecker,
@@ -943,6 +950,7 @@ func (c *client) generatePipelines() {
 			c.connectUplinkToBridge)
 		c.activatedFeatures = append(c.activatedFeatures, c.featureService)
 		c.traceableFeatures = append(c.traceableFeatures, c.featureService)
+		c.sampleFeatures = append(c.sampleFeatures, c.featureService)
 	}
 
 	if c.nodeType == config.ExternalNode {
@@ -989,6 +997,9 @@ func (c *client) generatePipelines() {
 
 	c.featureTraceflow = newFeatureTraceflow()
 	c.activatedFeatures = append(c.activatedFeatures, c.featureTraceflow)
+
+	c.featurePacketSampling = newFeaturePacketSampling()
+	c.activatedFeatures = append(c.activatedFeatures, c.featurePacketSampling)
 
 	// Pipelines to generate.
 	pipelineIDs := []binding.PipelineID{pipelineRoot, pipelineIP}
@@ -1234,6 +1245,24 @@ func (c *client) SendTraceflowPacket(dataplaneTag uint8, packet *binding.Packet,
 	return c.bridge.SendPacketOut(packetOutObj)
 }
 
+func (c *client) InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
+	cacheKey := fmt.Sprintf("%x", dataplaneTag)
+	var flows []binding.Flow
+
+	for _, f := range c.sampleFeatures {
+		flows = append(flows, f.flowsToSample(dataplaneTag,
+			c.ovsMetersAreSupported,
+			senderOnly,
+			receiverOnly,
+			packet,
+			endpointPackets,
+			ofPort,
+			timeoutSeconds)...)
+	}
+	return c.addFlows(c.featurePacketSampling.cachedFlows, cacheKey, flows)
+
+}
+
 func (c *client) InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedOnly, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
 	var flows []binding.Flow
@@ -1252,7 +1281,12 @@ func (c *client) InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedO
 
 func (c *client) UninstallTraceflowFlows(dataplaneTag uint8) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
-	return c.deleteFlows(c.featureTraceflow.cachedFlows, cacheKey)
+	return c.deleteFlows(c.featurePacketSampling.cachedFlows, cacheKey)
+}
+
+func (c *client) UninstallPacketSamplingFlows(dataplaneTag uint8) error {
+	cacheKey := fmt.Sprintf("%x", dataplaneTag)
+	return c.deleteFlows(c.featurePacketSampling.cachedFlows, cacheKey)
 }
 
 // setBasePacketOutBuilder sets base IP properties of a packetOutBuilder which can have more packet data added.

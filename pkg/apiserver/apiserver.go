@@ -18,6 +18,8 @@ import (
 	"context"
 	"time"
 
+	"antrea.io/antrea/pkg/controller/packetsampling"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -121,6 +123,7 @@ type ExtraConfig struct {
 	networkPolicyStatusController *controllernetworkpolicy.StatusController
 	bundleCollectionController    *controllerbundlecollection.Controller
 	traceflowController           *traceflow.Controller
+	packetSamplingController      *packetsampling.Controller
 }
 
 // Config defines the config for Antrea apiserver.
@@ -165,7 +168,8 @@ func NewConfig(
 	egressController *egress.EgressController,
 	externalIPPoolController *externalippool.ExternalIPPoolController,
 	bundleCollectionController *controllerbundlecollection.Controller,
-	traceflowController *traceflow.Controller) *Config {
+	traceflowController *traceflow.Controller,
+	packetSamplingController *packetsampling.Controller) *Config {
 	return &Config{
 		genericConfig: genericConfig,
 		extraConfig: ExtraConfig{
@@ -187,6 +191,7 @@ func NewConfig(
 			externalIPPoolController:      externalIPPoolController,
 			bundleCollectionController:    bundleCollectionController,
 			traceflowController:           traceflowController,
+			packetSamplingController:      packetSamplingController,
 		},
 	}
 }
@@ -342,6 +347,11 @@ func installHandlers(c *ExtraConfig, s *genericapiserver.GenericAPIServer) {
 	if features.DefaultFeatureGate.Enabled(features.Traceflow) {
 		s.Handler.NonGoRestfulMux.HandleFunc("/validate/traceflow", webhook.HandlerForValidateFunc(c.traceflowController.Validate))
 	}
+
+	if features.DefaultFeatureGate.Enabled(features.PacketSampling) {
+		s.Handler.NonGoRestfulMux.HandleFunc("/validate/packetsampling", webhook.HandlerForValidateFunc(packetsampling.Validate))
+	}
+
 }
 
 func DefaultCAConfig() *certificate.CAConfig {
