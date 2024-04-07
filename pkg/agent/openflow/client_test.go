@@ -94,6 +94,7 @@ type clientOptions struct {
 	enableMulticluster         bool
 	enableL7NetworkPolicy      bool
 	enableL7FlowExporter       bool
+	enablePacketSampling       bool
 	trafficEncryptionMode      config.TrafficEncryptionModeType
 }
 
@@ -166,6 +167,10 @@ func enableTrafficControl(o *clientOptions) {
 
 func enableMulticluster(o *clientOptions) {
 	o.enableMulticluster = true
+}
+
+func enablePacketSampling(o *clientOptions) {
+	o.enablePacketSampling = true
 }
 
 func setTrafficEncryptionMode(trafficEncryptionMode config.TrafficEncryptionModeType) clientOptionsFn {
@@ -419,7 +424,7 @@ func newFakeClientWithBridge(
 		o.enableMulticluster,
 		NewGroupAllocator(),
 		false,
-		false,
+		o.enablePacketSampling,
 		defaultPacketInRate)
 
 	// Meters must be supported to enable Egress traffic shaping.
@@ -1812,9 +1817,8 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 					TTL:            64,
 				},
 			},
-			wantErr: false,
-			// reuse prepare function for traceflow case.
-			prepareFunc: prepareTraceflowFlow,
+			wantErr:     false,
+			prepareFunc: preparePacketSamplingFlow,
 		},
 		{
 			name:   "packetsampling flow with receiver only",
@@ -1831,9 +1835,8 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 					TTL:            64,
 				},
 			},
-			wantErr: false,
-			// reuse prepare function for traceflow case.
-			prepareFunc: prepareTraceflowFlow,
+			wantErr:     false,
+			prepareFunc: preparePacketSamplingFlow,
 		},
 		{
 			name:   "packetsampling flow with sender only",
@@ -1850,9 +1853,8 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 					TTL:            64,
 				},
 			},
-			wantErr: false,
-			// reuse prepare function for traceflow case.
-			prepareFunc: prepareTraceflowFlow,
+			wantErr:     false,
+			prepareFunc: preparePacketSamplingFlow,
 		},
 		{
 			name:   "packetsampling flow with endpoints packets",
@@ -1887,9 +1889,8 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
-			// reuse prepare function for traceflow case.
-			prepareFunc: prepareTraceflowFlow,
+			wantErr:     false,
+			prepareFunc: preparePacketSamplingFlow,
 		},
 	}
 	for _, tt := range tests {
@@ -2041,6 +2042,32 @@ func Test_client_SendTraceflowPacket(t *testing.T) {
 			}
 		})
 	}
+}
+
+func preparePacketSamplingFlow(ctrl *gomock.Controller) *client {
+	m := opstest.NewMockOFEntryOperations(ctrl)
+	fc := newFakeClientWithBridge(m, true, false, config.K8sNode, config.TrafficEncapModeEncap, ovsoftest.NewMockBridge(ctrl), enablePacketSampling)
+	defer resetPipelines()
+
+	m.EXPECT().AddAll(gomock.Any()).Return(nil).Times(1)
+	_, ipCIDR, _ := net.ParseCIDR("192.168.2.30/32")
+	flows, _ := EgressDefaultTable.ofTable.BuildFlow(priority100).Action().Drop().Done().GetBundleMessages(binding.AddMessage)
+	flowMsg := flows[0].GetMessage().(*openflow15.FlowMod)
+	ctx := &conjMatchFlowContext{
+		dropFlow:              flowMsg,
+		dropFlowEnableLogging: false,
+		conjunctiveMatch: &conjunctiveMatch{
+			tableID: 1,
+			matchPairs: []matchPair{
+				{
+					matchKey:   MatchCTSrcIPNet,
+					matchValue: *ipCIDR,
+				},
+			},
+		}}
+	fc.featureNetworkPolicy.globalConjMatchFlowCache["mockContext"] = ctx
+	fc.featureNetworkPolicy.policyCache.Add(&policyRuleConjunction{metricFlows: []*openflow15.FlowMod{flowMsg}})
+	return fc
 }
 
 func prepareTraceflowFlow(ctrl *gomock.Controller) *client {
