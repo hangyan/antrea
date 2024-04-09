@@ -98,11 +98,8 @@ type packetSamplingState struct {
 	numCapturedPackets    int32
 	maxNumCapturedPackets int32
 	updateRateLimiter     *rate.Limiter
-	uid                   string
 	pcapngFile            afero.File
 	pcapngWriter          *pcapgo.NgWriter
-	receiverOnly          bool
-	isSender              bool
 }
 
 type Controller struct {
@@ -346,8 +343,6 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling, psState
 	}
 
 	podInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pod, ns)
-	isSender := !receiverOnly && len(podInterfaces) > 0
-
 	var packet, senderPacket *binding.Packet
 	var endpointPackets []binding.Packet
 	var ofPort uint32
@@ -369,10 +364,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling, psState
 	}
 
 	c.runningPacketSamplingsMutex.Lock()
-	psState.receiverOnly = receiverOnly
 	psState.maxNumCapturedPackets = ps.Spec.FirstNSamplingConfig.Number
-	psState.isSender = isSender
-
 	filePath := uidToPath(string(ps.UID))
 	exists, err := fileExists(filePath)
 	if err != nil {
@@ -391,7 +383,6 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketSampling, psState
 	}
 
 	psState.shouldSyncPackets = len(podInterfaces) > 0
-	psState.uid = string(ps.UID)
 	psState.pcapngFile = file
 	psState.pcapngWriter = writer
 

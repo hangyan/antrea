@@ -519,12 +519,10 @@ func TestSyncPacketSampling(t *testing.T) {
 			},
 			existingState: &packetSamplingState{
 				name: "ps1",
-				uid:  "uid1",
 				tag:  1,
 			},
 			newState: &packetSamplingState{
 				name: "ps1",
-				uid:  "uid1",
 				tag:  1,
 			},
 		},
@@ -553,7 +551,6 @@ func TestSyncPacketSampling(t *testing.T) {
 			},
 			existingState: &packetSamplingState{
 				name:         "ps1",
-				uid:          testUID,
 				pcapngFile:   file,
 				pcapngWriter: testWriter,
 				tag:          1,

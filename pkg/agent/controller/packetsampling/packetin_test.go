@@ -45,10 +45,13 @@ const (
 	maxNum = 5
 )
 
-var (
+const (
 	testTag     = uint8(1)
 	testUID     = "1-2-3-4"
 	testSFTPUrl = "sftp://10.220.175.92:22/root/packetsamplings"
+)
+
+var (
 	// parse to tag(1)
 	testTagData = []byte{0x11, 0x00, 0x00, 0x11}
 )
@@ -75,12 +78,11 @@ func generateMatch(regID int, data []byte) openflow15.MatchField {
 	}
 }
 
-func getTestPacketBytes(dstIP string, dscp uint8) []byte {
+func getTestPacketBytes(dstIP string) []byte {
 	ipPacket := &protocol.IPv4{
 		Version:  0x4,
 		IHL:      5,
 		Protocol: uint8(8),
-		DSCP:     dscp,
 		Length:   20,
 		NWSrc:    net.IP(pod1IPv4),
 		NWDst:    net.IP(dstIP),
@@ -157,8 +159,8 @@ func (uploader *testUploader) Upload(url string, fileName string, config *ssh.Cl
 
 func TestHandlePacketSamplingPacketIn(t *testing.T) {
 
-	invalidPktBytes := getTestPacketBytes("89.207.132.170", 0)
-	pktBytesPodToPod := getTestPacketBytes(pod2IPv4, testTag)
+	invalidPktBytes := getTestPacketBytes("89.207.132.170")
+	pktBytesPodToPod := getTestPacketBytes(pod2IPv4)
 
 	// create test os
 	defaultFS = afero.NewMemMapFs()
