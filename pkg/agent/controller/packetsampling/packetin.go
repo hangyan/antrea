@@ -26,7 +26,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"antrea.io/antrea/pkg/agent/openflow"
-	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
 // HandlePacketIn processes PacketIn messages from the OFSwitch. If the DSCP flag match, it will be counted and captured.
@@ -71,7 +70,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 		if err != nil {
 			return fmt.Errorf("get PacketSampling failed: %w", err)
 		}
-		return c.uploadPacketsFile(ps)
+		return c.uploadPackets(ps, samplingState.pcapngFile)
 	}
 
 	return nil
@@ -108,14 +107,4 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingSta
 		return nil, false, fmt.Errorf("PacketSampling for dataplane tag %d not found in cache", tag)
 	}
 	return &samplingState, false, nil
-}
-
-func (c *Controller) uploadPacketsFile(ps *crdv1alpha1.PacketSampling) error {
-	name := uidToPath(string(ps.UID))
-	file, err := defaultFS.Open(name)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return c.uploadPackets(ps, file)
 }
