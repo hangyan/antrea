@@ -645,7 +645,6 @@ func run(o *Options) error {
 			ofClient,
 			ifaceStore,
 			nodeConfig,
-			o.enableAntreaProxy,
 		)
 	}
 

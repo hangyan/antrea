@@ -143,7 +143,6 @@ func newFakePacketSamplingController(t *testing.T, runtimeObjects []runtime.Obje
 		mockOFClient,
 		ifaceStore,
 		nodeConfig,
-		true,
 	)
 	psController.sftpUploader = &testUploader{}
 

@@ -118,7 +118,6 @@ type Controller struct {
 	queue                       workqueue.RateLimitingInterface
 	runningPacketSamplingsMutex sync.RWMutex
 	runningPacketSamplings      map[uint8]*packetSamplingState
-	enableAntreaProxy           bool
 	sftpUploader                ftp.UpLoader
 }
 
@@ -131,7 +130,6 @@ func NewPacketSamplingController(
 	client openflow.Client,
 	interfaceStore interfacestore.InterfaceStore,
 	nodeConfig *config.NodeConfig,
-	enableAntreaProxy bool,
 ) *Controller {
 	c := &Controller{
 		kubeClient:             kubeClient,
@@ -146,7 +144,6 @@ func NewPacketSamplingController(
 			workqueue.RateLimitingQueueConfig{Name: "packetsampling"}),
 		runningPacketSamplings: make(map[uint8]*packetSamplingState),
 		sftpUploader:           &ftp.SftpUploader{},
-		enableAntreaProxy:      enableAntreaProxy,
 	}
 
 	packetSamplingInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
@@ -157,14 +154,11 @@ func NewPacketSamplingController(
 
 	c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInCategoryPS), c)
 
-	if c.enableAntreaProxy {
-		c.serviceLister = serviceInformer.Lister()
-		c.serviceListerSynced = serviceInformer.Informer().HasSynced
-		c.endpointLister = endpointInformer.Lister()
-		c.endpointSynced = endpointInformer.Informer().HasSynced
-	}
+	c.serviceLister = serviceInformer.Lister()
+	c.serviceListerSynced = serviceInformer.Informer().HasSynced
+	c.endpointLister = endpointInformer.Lister()
+	c.endpointSynced = endpointInformer.Informer().HasSynced
 	return c
-
 }
 
 func (c *Controller) enqueuePacketSampling(ps *crdv1alpha1.PacketSampling) {
@@ -179,10 +173,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	klog.InfoS("Starting packetsampling controller.", "name", controllerName)
 	defer klog.InfoS("Shutting down packetsampling controller.", "name", controllerName)
 
-	cacheSynced := []cache.InformerSynced{c.packetSamplingSynced}
-	if c.enableAntreaProxy {
-		cacheSynced = append(cacheSynced, c.serviceListerSynced, c.endpointSynced)
-	}
+	cacheSynced := []cache.InformerSynced{c.packetSamplingSynced, c.serviceListerSynced, c.endpointSynced}
 	if !cache.WaitForNamedCacheSync(controllerName, stopCh, cacheSynced...) {
 		return
 	}
@@ -256,9 +247,6 @@ func (c *Controller) processPacketSamplingItem() bool {
 }
 
 func (c *Controller) validatePacketSampling(ps *crdv1alpha1.PacketSampling) error {
-	if ps.Spec.Destination.Service != "" && !c.enableAntreaProxy {
-		return errors.New("using Service destination requires AntreaProxy feature enabled")
-	}
 	if ps.Spec.Destination.IP != "" {
 		destIP := net.ParseIP(ps.Spec.Destination.IP)
 		if destIP == nil {
