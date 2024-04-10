@@ -663,8 +663,8 @@ func (c *Controller) deallocateTag(name string, tag uint8) {
 }
 
 func (c *Controller) getTagForPacketSampling(name string) uint8 {
-	c.runningPacketSamplingsMutex.Lock()
-	defer c.runningPacketSamplingsMutex.Unlock()
+	c.runningPacketSamplingsMutex.RLock()
+	defer c.runningPacketSamplingsMutex.RUnlock()
 	for tag, state := range c.runningPacketSamplings {
 		if state != nil && state.name == name {
 			// The packetsampling request has been processed already.
