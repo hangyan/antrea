@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"antrea.io/libOpenflow/protocol"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/spf13/afero"
@@ -37,7 +38,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
-	"antrea.io/libOpenflow/protocol"
 
 	"antrea.io/antrea/pkg/agent/config"
 	"antrea.io/antrea/pkg/agent/interfacestore"
