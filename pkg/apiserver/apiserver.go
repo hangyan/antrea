@@ -66,6 +66,7 @@ import (
 	"antrea.io/antrea/pkg/controller/externalippool"
 	"antrea.io/antrea/pkg/controller/ipam"
 	controllernetworkpolicy "antrea.io/antrea/pkg/controller/networkpolicy"
+	"antrea.io/antrea/pkg/controller/packetsampling"
 	"antrea.io/antrea/pkg/controller/querier"
 	"antrea.io/antrea/pkg/controller/stats"
 	controllerbundlecollection "antrea.io/antrea/pkg/controller/supportbundlecollection"
@@ -342,6 +343,11 @@ func installHandlers(c *ExtraConfig, s *genericapiserver.GenericAPIServer) {
 	if features.DefaultFeatureGate.Enabled(features.Traceflow) {
 		s.Handler.NonGoRestfulMux.HandleFunc("/validate/traceflow", webhook.HandlerForValidateFunc(c.traceflowController.Validate))
 	}
+
+	if features.DefaultFeatureGate.Enabled(features.PacketSampling) {
+		s.Handler.NonGoRestfulMux.HandleFunc("/validate/packetsampling", webhook.HandlerForValidateFunc(packetsampling.Validate))
+	}
+
 }
 
 func DefaultCAConfig() *certificate.CAConfig {
