@@ -87,23 +87,20 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingSta
 		tag = uint8(value)
 	}
 	c.runningPacketSamplingsMutex.Lock()
+	defer c.runningPacketSamplingsMutex.Unlock()
 	psState, exists := c.runningPacketSamplings[tag]
-	if exists {
-		if psState.numCapturedPackets == psState.maxNumCapturedPackets {
-			c.runningPacketSamplingsMutex.Unlock()
-			return nil, true, nil
-		}
-		psState.numCapturedPackets++
-		if psState.numCapturedPackets == psState.maxNumCapturedPackets {
-			err := c.ofClient.UninstallPacketSamplingFlows(tag)
-			if err != nil {
-				return nil, false, fmt.Errorf("uninstall PacketSampling ovs flow failed: %v", err)
-			}
-		}
-	}
-	c.runningPacketSamplingsMutex.Unlock()
 	if !exists {
 		return nil, false, fmt.Errorf("PacketSampling for dataplane tag %d not found in cache", tag)
+	}
+	if psState.numCapturedPackets == psState.maxNumCapturedPackets {
+		return nil, true, nil
+	}
+	psState.numCapturedPackets++
+	if psState.numCapturedPackets == psState.maxNumCapturedPackets {
+		err := c.ofClient.UninstallPacketSamplingFlows(tag)
+		if err != nil {
+			return nil, false, fmt.Errorf("uninstall PacketSampling ovs flow failed: %v", err)
+		}
 	}
 	return psState, false, nil
 }
