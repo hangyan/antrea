@@ -86,7 +86,7 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingSta
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to get PacketSampling tag from packet-in message: %w", err)
 		}
-		klog.Infof("debug-1 match:  %+v %v", match, data, mask)
+		klog.Infof("debug-1 match:  %+v %v %s", match.MatchField, data, mask)
 		tag = uint8(value)
 	}
 	c.runningPacketSamplingsMutex.Lock()
