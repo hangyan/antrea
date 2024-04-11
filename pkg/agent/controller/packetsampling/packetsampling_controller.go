@@ -70,7 +70,7 @@ const (
 	defaultWorkers = 4
 
 	// 4bits in ovs reg4
-	minTagNum uint8 = 1
+	minTagNum uint8 = 3
 	maxTagNum uint8 = 15
 
 	// reason for timeout

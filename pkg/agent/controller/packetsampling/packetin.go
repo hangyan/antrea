@@ -80,10 +80,13 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingSta
 	matchers := pktIn.GetMatches()
 	match := openflow.GetMatchFieldByRegID(matchers, openflow.PacketSamplingMark.GetRegID())
 	if match != nil {
+		data, _ := match.Value.MarshalBinary()
+		mask, _ := match.Value.MarshalBinary()
 		value, err := openflow.GetInfoInReg(match, openflow.PacketSamplingMark.GetRange().ToNXRange())
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to get PacketSampling tag from packet-in message: %w", err)
 		}
+		klog.Infof("debug-1 match:  %+v %v", match, data, mask)
 		tag = uint8(value)
 	}
 	c.runningPacketSamplingsMutex.Lock()
