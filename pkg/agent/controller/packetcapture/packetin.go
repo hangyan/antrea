@@ -51,7 +51,7 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	reachTarget := captureState.numCapturedPackets == captureState.maxNumCapturedPackets
 	// use rate limiter to reduce the times we need to update status.
 	if reachTarget || captureState.updateRateLimiter.Allow() {
-		ps, err := c.packetCaptureLister.Get(captureState.name)
+		pc, err := c.packetCaptureLister.Get(captureState.name)
 		if err != nil {
 			return fmt.Errorf("get PacketCapture failed: %w", err)
 		}
@@ -60,15 +60,15 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 			if err := captureState.pcapngWriter.Flush(); err != nil {
 				return err
 			}
-			if err := c.uploadPackets(ps, captureState.pcapngFile); err != nil {
+			if err := c.uploadPackets(pc, captureState.pcapngFile); err != nil {
 				return err
 			}
 		}
-		err = c.updatePacketCaptureStatus(ps, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
+		err = c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
 		if err != nil {
 			return fmt.Errorf("failed to update the PacketCapture: %w", err)
 		}
-		klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(ps), "numCapturedPackets", captureState.numCapturedPackets)
+		klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(pc), "numCapturedPackets", captureState.numCapturedPackets)
 	}
 	return nil
 }
@@ -88,19 +88,19 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetCaptureStat
 	}
 	c.runningPacketCapturesMutex.Lock()
 	defer c.runningPacketCapturesMutex.Unlock()
-	psState, exists := c.runningPacketCaptures[tag]
+	pcState, exists := c.runningPacketCaptures[tag]
 	if !exists {
 		return nil, false, fmt.Errorf("PacketCapture for dataplane tag %d not found in cache", tag)
 	}
-	if psState.numCapturedPackets == psState.maxNumCapturedPackets {
+	if pcState.numCapturedPackets == pcState.maxNumCapturedPackets {
 		return nil, true, nil
 	}
-	psState.numCapturedPackets++
-	if psState.numCapturedPackets == psState.maxNumCapturedPackets {
+	pcState.numCapturedPackets++
+	if pcState.numCapturedPackets == pcState.maxNumCapturedPackets {
 		err := c.ofClient.UninstallPacketCaptureFlows(tag)
 		if err != nil {
 			return nil, false, fmt.Errorf("uninstall PacketCapture ovs flow failed: %v", err)
 		}
 	}
-	return psState, false, nil
+	return pcState, false, nil
 }
