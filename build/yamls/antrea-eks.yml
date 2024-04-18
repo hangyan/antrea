@@ -4318,7 +4318,7 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: packetsamplings.crd.antrea.io
+  name: packetcaptures.crd.antrea.io
   labels:
     app: antrea
 spec:
@@ -4329,7 +4329,7 @@ spec:
       storage: true
       additionalPrinterColumns:
         - jsonPath: .status.phase
-          description: The phase of the PacketSampling.
+          description: The phase of the PacketCapture.
           name: Phase
           type: string
         - jsonPath: .spec.source.pod
@@ -4442,7 +4442,7 @@ spec:
                   maximum: 300
                 type:
                   type: string
-                firstNSamplingConfig:
+                firstNCaptureConfig:
                   type: object
                   properties:
                     number:
@@ -4483,11 +4483,11 @@ spec:
         status: {}
   scope: Cluster
   names:
-    plural: packetsamplings
+    plural: packetcaptures
     singular: packetcapture
-    kind: PacketSampling
+    kind: PacketCapture
     shortNames:
-      - ps
+      - pcp
 
 ---
 # Source: crds/supportbundlecollection.yaml
@@ -5625,8 +5625,8 @@ data:
     # Enable traceflow which provides packet tracing feature to diagnose network issue.
     #  Traceflow: true
 
-    # Enable PacketSampling feature which provides packets sampling (capture) feature to diagnose network issue.
-    #  PacketSampling: false
+    # Enable PacketCapture feature which provides packets capture feature to diagnose network issue.
+    #  PacketCapture: false
 
     # Enable NodePortLocal feature to make the Pods reachable externally through NodePort
     #  NodePortLocal: true
@@ -6317,7 +6317,7 @@ rules:
   - apiGroups:
       - crd.antrea.io
     resources:
-      - packetsamplings
+      - packetcaptures
     verbs:
       - get
       - watch
@@ -6325,7 +6325,7 @@ rules:
   - apiGroups:
       - crd.antrea.io
     resources:
-      - packetsamplings/status
+      - packetcaptures/status
     verbs:
       - patch
   - apiGroups:
@@ -7009,7 +7009,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 8c4aced766a99cc91b0f614593a3f326865f0b882ad92a105827253ffb98d0db
+        checksum/config: dffcc9ada8eaf829224535f8dfbee16287d1a46c20b309a5e591b73f1053f2ac
       labels:
         app: antrea
         component: antrea-agent
@@ -7248,7 +7248,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 8c4aced766a99cc91b0f614593a3f326865f0b882ad92a105827253ffb98d0db
+        checksum/config: dffcc9ada8eaf829224535f8dfbee16287d1a46c20b309a5e591b73f1053f2ac
       labels:
         app: antrea
         component: antrea-controller
@@ -7631,7 +7631,7 @@ webhooks:
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None
     timeoutSeconds: 5
-  - name: "packetsamplingvalidator.antrea.io"
+  - name: "packetcapturevalidator.antrea.io"
     clientConfig:
       service:
         name: "antrea"

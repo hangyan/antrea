@@ -4295,7 +4295,7 @@ spec:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: packetsamplings.crd.antrea.io
+  name: packetcaptures.crd.antrea.io
   labels:
     app: antrea
 spec:
@@ -4306,7 +4306,7 @@ spec:
       storage: true
       additionalPrinterColumns:
         - jsonPath: .status.phase
-          description: The phase of the PacketSampling.
+          description: The phase of the PacketCapture.
           name: Phase
           type: string
         - jsonPath: .spec.source.pod
@@ -4419,7 +4419,7 @@ spec:
                   maximum: 300
                 type:
                   type: string
-                firstNSamplingConfig:
+                firstNCaptureConfig:
                   type: object
                   properties:
                     number:
@@ -4460,11 +4460,11 @@ spec:
         status: {}
   scope: Cluster
   names:
-    plural: packetsamplings
+    plural: packetcaptures
     singular: packetcapture
-    kind: PacketSampling
+    kind: PacketCapture
     shortNames:
-      - ps
+      - pcp
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
