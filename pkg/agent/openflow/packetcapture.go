@@ -20,36 +20,36 @@ import (
 	binding "antrea.io/antrea/pkg/ovs/openflow"
 )
 
-type featurePacketSampling struct {
+type featurePacketCapture struct {
 	cachedFlows *flowCategoryCache
 }
 
-func (f *featurePacketSampling) getFeatureName() string {
-	return "PacketSampling"
+func (f *featurePacketCapture) getFeatureName() string {
+	return "PacketCapture"
 }
 
-func newFeaturePacketSampling() *featurePacketSampling {
-	return &featurePacketSampling{
+func newFeaturePacketCapture() *featurePacketCapture {
+	return &featurePacketCapture{
 		cachedFlows: newFlowCategoryCache(),
 	}
 }
 
-func (f *featurePacketSampling) initFlows() []*openflow15.FlowMod {
+func (f *featurePacketCapture) initFlows() []*openflow15.FlowMod {
 	return []*openflow15.FlowMod{}
 }
 
-func (f *featurePacketSampling) replayFlows() []*openflow15.FlowMod {
+func (f *featurePacketCapture) replayFlows() []*openflow15.FlowMod {
 	return []*openflow15.FlowMod{}
 }
 
-func (f *featurePacketSampling) initGroups() []binding.OFEntry {
+func (f *featurePacketCapture) initGroups() []binding.OFEntry {
 	return nil
 }
 
-func (f *featurePacketSampling) replayGroups() []binding.OFEntry {
+func (f *featurePacketCapture) replayGroups() []binding.OFEntry {
 	return nil
 }
 
-func (f *featurePacketSampling) replayMeters() []binding.OFEntry {
+func (f *featurePacketCapture) replayMeters() []binding.OFEntry {
 	return nil
 }

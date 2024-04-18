@@ -402,7 +402,7 @@ type client struct {
 	enableL7FlowExporter       bool
 	enableMulticluster         bool
 	enablePrometheusMetrics    bool
-	enablePacketSampling       bool
+	enablePacketCapture        bool
 	connectUplinkToBridge      bool
 	nodeType                   config.NodeType
 	roundInfo                  types.RoundInfo
@@ -422,8 +422,8 @@ type client struct {
 	featureTraceflow  *featureTraceflow
 	traceableFeatures []traceableFeature
 
-	featurePacketSampling *featurePacketSampling
-	samplingFeatures      []samplingFeature
+	featurePacketCapture  *featurePacketCapture
+	packetCaptureFeatures []packetCaptureFeature
 
 	pipelines map[binding.PipelineID]binding.Pipeline
 
@@ -887,8 +887,8 @@ func matchTransportHeader(packet *binding.Packet, flowBuilder binding.FlowBuilde
 	return flowBuilder
 }
 
-// flowsToSampling generates flows for packet sampling. dataplaneTag is used as a mark for the target flow.
-func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
+// flowsToCapture generates flows for packet capture. dataplaneTag is used as a mark for the target flow.
+func (f *featurePodConnectivity) flowsToCapture(dataplaneTag uint8,
 	ovsMetersAreSupported,
 	senderOnly bool,
 	receiverOnly bool,
@@ -896,7 +896,7 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 	endpointPackets []binding.Packet,
 	ofPort uint32,
 	timeout uint16) []binding.Flow {
-	cookieID := f.cookieAllocator.Request(cookie.PacketSampling).Raw()
+	cookieID := f.cookieAllocator.Request(cookie.PacketCapture).Raw()
 	var flows []binding.Flow
 	tag := uint32(dataplaneTag)
 	var flowBuilder binding.FlowBuilder
@@ -907,7 +907,7 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 				Cookie(cookieID).
 				MatchInPort(ofPort).
 				MatchCTStateTrk(true).
-				Action().LoadToRegField(PacketSamplingMark, tag).
+				Action().LoadToRegField(PacketCaptureMark, tag).
 				SetHardTimeout(timeout).
 				Action().GotoStage(stagePreRouting)
 			if packet.DestinationIP != nil {
@@ -920,7 +920,7 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 					Cookie(cookieID).
 					MatchInPort(ofPort).
 					MatchCTStateTrk(true).
-					Action().LoadToRegField(PacketSamplingMark, tag).
+					Action().LoadToRegField(PacketCaptureMark, tag).
 					SetHardTimeout(timeout).
 					Action().GotoStage(stagePreRouting)
 				tmpFlowBuilder.MatchDstIP(epPacket.DestinationIP)
@@ -935,7 +935,7 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 			MatchDstMAC(packet.DestinationMAC).
 			Action().LoadToRegField(TargetOFPortField, ofPort).
 			Action().LoadRegMark(OutputToOFPortRegMark).
-			Action().LoadToRegField(PacketSamplingMark, tag).
+			Action().LoadToRegField(PacketCaptureMark, tag).
 			SetHardTimeout(timeout).
 			Action().GotoStage(stageIngressSecurity)
 		if packet.SourceIP != nil {
@@ -953,7 +953,7 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 				MatchCTStateNew(true).
 				MatchCTStateTrk(true).
 				Action().LoadRegMark(RewriteMACRegMark).
-				Action().LoadToRegField(PacketSamplingMark, tag).
+				Action().LoadToRegField(PacketCaptureMark, tag).
 				SetHardTimeout(timeout).
 				Action().GotoStage(stagePreRouting)
 			tmpFlowBuilder.MatchDstIP(packet.DestinationIP)
@@ -975,11 +975,11 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 		if ovsMetersAreSupported {
 			fb = fb.Action().Meter(PacketInMeterIDTF)
 		}
-		fb = fb.Action().SendToController([]byte{uint8(PacketInCategoryPS)}, false)
+		fb = fb.Action().SendToController([]byte{uint8(PacketInCategoryPC)}, false)
 		return fb
 	}
 
-	// This generates PacketSampling specific flows that outputs sampling
+	// This generates PacketCapture specific flows that outputs capture
 	// non-hairpin packets to OVS port and Antrea Agent after
 	// L2 forwarding calculation.
 	for _, ipProtocol := range f.ipProtocols {
@@ -990,20 +990,20 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 				MatchRegFieldWithValue(TargetOFPortField, f.tunnelPort).
 				MatchProtocol(ipProtocol).
 				MatchRegMark(OutputToOFPortRegMark).
-				MatchRegFieldWithValue(PacketSamplingMark, tag).
+				MatchRegFieldWithValue(PacketCaptureMark, tag).
 				SetHardTimeout(timeout).
 				Action().OutputToRegField(TargetOFPortField)
 			fb = sendToController(fb)
 			flows = append(flows, fb.Done())
-			// For injected packets, only SendToController if output port is local gateway. In encapMode, a PacketSampling
-			// packet going out of the gateway port (i.e. exiting the overlay) essentially means that the PacketSampling
+			// For injected packets, only SendToController if output port is local gateway. In encapMode, a PacketCapture
+			// packet going out of the gateway port (i.e. exiting the overlay) essentially means that the PacketCapture
 			// request is complete.
 			fb = OutputTable.ofTable.BuildFlow(priorityNormal+2).
 				Cookie(cookieID).
 				MatchRegFieldWithValue(TargetOFPortField, f.gatewayPort).
 				MatchProtocol(ipProtocol).
 				MatchRegMark(OutputToOFPortRegMark).
-				MatchRegFieldWithValue(PacketSamplingMark, tag).
+				MatchRegFieldWithValue(PacketCaptureMark, tag).
 				SetHardTimeout(timeout)
 			fb = sendToController(fb)
 			fb = output(fb)
@@ -1016,7 +1016,7 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 				MatchRegFieldWithValue(TargetOFPortField, f.gatewayPort).
 				MatchProtocol(ipProtocol).
 				MatchRegMark(OutputToOFPortRegMark).
-				MatchRegFieldWithValue(PacketSamplingMark, tag).
+				MatchRegFieldWithValue(PacketCaptureMark, tag).
 				SetHardTimeout(timeout).
 				Action().OutputToRegField(TargetOFPortField)
 			fb = sendToController(fb)
@@ -1031,7 +1031,7 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 				MatchProtocol(ipProtocol).
 				MatchDstIP(gatewayIP).
 				MatchRegMark(OutputToOFPortRegMark).
-				MatchRegFieldWithValue(PacketSamplingMark, tag).
+				MatchRegFieldWithValue(PacketCaptureMark, tag).
 				SetHardTimeout(timeout)
 			fb = sendToController(fb)
 			fb = output(fb)
@@ -1042,7 +1042,7 @@ func (f *featurePodConnectivity) flowsToSampling(dataplaneTag uint8,
 			Cookie(cookieID).
 			MatchProtocol(ipProtocol).
 			MatchRegMark(OutputToOFPortRegMark).
-			MatchRegFieldWithValue(PacketSamplingMark, tag).
+			MatchRegFieldWithValue(PacketCaptureMark, tag).
 			SetHardTimeout(timeout)
 		fb = sendToController(fb)
 		fb = output(fb)
@@ -1237,8 +1237,8 @@ func (f *featurePodConnectivity) flowsToTrace(dataplaneTag uint8,
 	return flows
 }
 
-// flowsToSampling is used to generate flows for PacketSampling in featureService.
-func (f *featureService) flowsToSampling(dataplaneTag uint8,
+// flowsToCapture is used to generate flows for PacketCapture in featureService.
+func (f *featureService) flowsToCapture(dataplaneTag uint8,
 	ovsMetersAreSupported,
 	senderOnly bool,
 	receiverOnly bool,
@@ -1246,18 +1246,18 @@ func (f *featureService) flowsToSampling(dataplaneTag uint8,
 	endpointPackets []binding.Packet,
 	ofPort uint32,
 	timeout uint16) []binding.Flow {
-	cookieID := f.cookieAllocator.Request(cookie.PacketSampling).Raw()
+	cookieID := f.cookieAllocator.Request(cookie.PacketCapture).Raw()
 	var flows []binding.Flow
 
 	sendToController := func(fb binding.FlowBuilder) binding.FlowBuilder {
 		if ovsMetersAreSupported {
 			fb = fb.Action().Meter(PacketInMeterIDTF)
 		}
-		fb = fb.Action().SendToController([]byte{uint8(PacketInCategoryPS)}, false)
+		fb = fb.Action().SendToController([]byte{uint8(PacketInCategoryPC)}, false)
 		return fb
 	}
 
-	// This generates PacketSampling specific flows that outputs hairpin PacketSampling packets to OVS port and Antrea Agent after
+	// This generates PacketCapture specific flows that outputs hairpin PacketCapture packets to OVS port and Antrea Agent after
 	// L2forwarding calculation.
 	for _, ipProtocol := range f.ipProtocols {
 		if f.enableProxy {
@@ -1265,7 +1265,7 @@ func (f *featureService) flowsToSampling(dataplaneTag uint8,
 				Cookie(cookieID).
 				MatchProtocol(ipProtocol).
 				MatchCTMark(HairpinCTMark).
-				MatchRegFieldWithValue(PacketSamplingMark, uint32(dataplaneTag)).
+				MatchRegFieldWithValue(PacketCaptureMark, uint32(dataplaneTag)).
 				SetHardTimeout(timeout)
 			fb = sendToController(fb)
 			fb = fb.Action().OutputToRegField(TargetOFPortField)
@@ -3069,7 +3069,7 @@ func NewClient(bridgeName string,
 	enableMulticluster bool,
 	groupIDAllocator GroupAllocator,
 	enablePrometheusMetrics bool,
-	enablePacketSampling bool,
+	enablePacketCapture bool,
 	packetInRate int,
 ) *client {
 	bridge := binding.NewOFBridge(bridgeName, mgmtAddr)
@@ -3089,7 +3089,7 @@ func NewClient(bridgeName string,
 		enableL7FlowExporter:       enableL7FlowExporter,
 		enableMulticluster:         enableMulticluster,
 		enablePrometheusMetrics:    enablePrometheusMetrics,
-		enablePacketSampling:       enablePacketSampling,
+		enablePacketCapture:        enablePacketCapture,
 		connectUplinkToBridge:      connectUplinkToBridge,
 		pipelines:                  make(map[binding.PipelineID]binding.Pipeline),
 		packetInHandlers:           map[uint8]PacketInHandler{},

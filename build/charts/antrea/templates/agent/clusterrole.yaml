@@ -163,7 +163,7 @@ rules:
   - apiGroups:
       - crd.antrea.io
     resources:
-      - packetsamplings
+      - packetcaptures
     verbs:
       - get
       - watch
@@ -171,7 +171,7 @@ rules:
   - apiGroups:
       - crd.antrea.io
     resources:
-      - packetsamplings/status
+      - packetcaptures/status
     verbs:
       - patch
   - apiGroups:

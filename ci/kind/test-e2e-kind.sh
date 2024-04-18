@@ -322,7 +322,7 @@ function run_test {
   flow_visibility_args=""
 
 
-  # used for PacketSampling tests.
+  # used for PacketCapture tests.
   cat "$SFTP_DEPLOYMENT_YML" | docker exec -i kind-control-plane dd of=/root/sftp-deployment.yml
 
   if $use_non_default_images; then

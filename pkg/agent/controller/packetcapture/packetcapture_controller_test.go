@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package packetsampling
+package packetcapture
 
 import (
 	"bytes"
@@ -97,7 +97,7 @@ var (
 	}
 )
 
-type fakePacketSamplingController struct {
+type fakePacketCaptureController struct {
 	*Controller
 	kubeClient         kubernetes.Interface
 	mockController     *gomock.Controller
@@ -107,7 +107,7 @@ type fakePacketSamplingController struct {
 	informerFactory    informers.SharedInformerFactory
 }
 
-func newFakePacketSamplingController(t *testing.T, runtimeObjects []runtime.Object, initObjects []runtime.Object, networkConfig *config.NetworkConfig, nodeConfig *config.NodeConfig) *fakePacketSamplingController {
+func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Object, initObjects []runtime.Object, networkConfig *config.NetworkConfig, nodeConfig *config.NodeConfig) *fakePacketCaptureController {
 	controller := gomock.NewController(t)
 	objs := []runtime.Object{
 		&pod1,
@@ -123,7 +123,7 @@ func newFakePacketSamplingController(t *testing.T, runtimeObjects []runtime.Obje
 	mockOFClient := openflowtest.NewMockClient(controller)
 	crdClient := fakeversioned.NewSimpleClientset(initObjects...)
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdClient, 0)
-	packetSamplingInformer := crdInformerFactory.Crd().V1alpha1().PacketSamplings()
+	packetCaptureInformer := crdInformerFactory.Crd().V1alpha1().PacketCaptures()
 	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointInformer := informerFactory.Core().V1().Endpoints()
@@ -133,19 +133,19 @@ func newFakePacketSamplingController(t *testing.T, runtimeObjects []runtime.Obje
 	addPodInterface(ifaceStore, pod2.Namespace, pod2.Name, pod2IPv4, pod2MAC.String(), int32(ofPortPod2))
 
 	mockOFClient.EXPECT().RegisterPacketInHandler(gomock.Any(), gomock.Any()).Times(1)
-	psController := NewPacketSamplingController(
+	psController := NewPacketCaptureController(
 		kubeClient,
 		crdClient,
 		serviceInformer,
 		endpointInformer,
-		packetSamplingInformer,
+		packetCaptureInformer,
 		mockOFClient,
 		ifaceStore,
 		nodeConfig,
 	)
 	psController.sftpUploader = &testUploader{}
 
-	return &fakePacketSamplingController{
+	return &fakePacketCaptureController{
 		Controller:         psController,
 		kubeClient:         kubeClient,
 		mockController:     controller,
@@ -169,7 +169,7 @@ func addPodInterface(ifaceStore interfacestore.InterfaceStore, podNamespace, pod
 	})
 }
 
-func TestErrPacketSamplingCRD(t *testing.T) {
+func TestErrPacketCaptureCRD(t *testing.T) {
 	ps := &crdv1alpha1.PacketCapture{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "ps",
@@ -194,9 +194,9 @@ func TestErrPacketSamplingCRD(t *testing.T) {
 	expectedPS.Status.Phase = crdv1alpha1.PacketCaptureFailed
 	expectedPS.Status.Reason = reason
 
-	psc := newFakePacketSamplingController(t, nil, []runtime.Object{ps}, nil, nil)
+	psc := newFakePacketCaptureController(t, nil, []runtime.Object{ps}, nil, nil)
 
-	err := psc.updatePacketSamplingStatus(ps, crdv1alpha1.PacketCaptureFailed, reason, 0)
+	err := psc.updatePacketCaptureStatus(ps, crdv1alpha1.PacketCaptureFailed, reason, 0)
 	require.NoError(t, err)
 }
 
@@ -299,7 +299,7 @@ func TestPreparePacket(t *testing.T) {
 			expectedErr: "destination Pod does not have an IPv6 address",
 		},
 		{
-			name: "pod to ipv6 packet sampling",
+			name: "pod to ipv6 packet capture",
 			ps: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "ps5", UID: "uid5"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -454,7 +454,7 @@ func TestPreparePacket(t *testing.T) {
 	}
 	for _, ps := range pss {
 		t.Run(ps.name, func(t *testing.T) {
-			psc := newFakePacketSamplingController(t, nil, []runtime.Object{ps.ps}, nil, nil)
+			psc := newFakePacketCaptureController(t, nil, []runtime.Object{ps.ps}, nil, nil)
 			podInterfaces := psc.interfaceStore.GetContainerInterfacesByPod(pod1.Name, pod1.Namespace)
 			if ps.intf != nil {
 				podInterfaces[0] = ps.intf
@@ -478,10 +478,10 @@ func TestPreparePacket(t *testing.T) {
 	}
 }
 
-func TestSyncPacketSampling(t *testing.T) {
+func TestSyncPacketCapture(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
-	defaultFS.MkdirAll("/tmp/antrea/packetsampling/packets", 0755)
+	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
 	file, err := defaultFS.Create(uidToPath(testUID))
 	if err != nil {
 		t.Fatal("create pcapng file error: ", err)
@@ -495,12 +495,12 @@ func TestSyncPacketSampling(t *testing.T) {
 	pcs := []struct {
 		name          string
 		ps            *crdv1alpha1.PacketCapture
-		existingState *packetSamplingState
-		newState      *packetSamplingState
+		existingState *packetCaptureState
+		newState      *packetCaptureState
 		expectedCalls func(mockOFClient *openflowtest.MockClient)
 	}{
 		{
-			name: "start packetsampling",
+			name: "start packetcapture",
 			ps: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "ps1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -514,18 +514,18 @@ func TestSyncPacketSampling(t *testing.T) {
 					},
 				},
 			},
-			existingState: &packetSamplingState{
+			existingState: &packetCaptureState{
 				name: "ps1",
 				tag:  1,
 			},
-			newState: &packetSamplingState{
+			newState: &packetCaptureState{
 				name: "ps1",
 				tag:  1,
 			},
 		},
 
 		{
-			name: "packetsampling in failed phase",
+			name: "packetcapture in failed phase",
 			ps: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "ps1", UID: types.UID(testUID)},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -546,53 +546,53 @@ func TestSyncPacketSampling(t *testing.T) {
 					Phase: crdv1alpha1.PacketCaptureFailed,
 				},
 			},
-			existingState: &packetSamplingState{
+			existingState: &packetCaptureState{
 				name:         "ps1",
 				pcapngFile:   file,
 				pcapngWriter: testWriter,
 				tag:          1,
 			},
 			expectedCalls: func(mockOFClient *openflowtest.MockClient) {
-				mockOFClient.EXPECT().UninstallPacketSamplingFlows(uint8(1))
+				mockOFClient.EXPECT().UninstallPacketCaptureFlows(uint8(1))
 			},
 		},
 	}
 
 	for _, ps := range pcs {
 		t.Run(ps.name, func(t *testing.T) {
-			psc := newFakePacketSamplingController(t, nil, []runtime.Object{ps.ps}, nil, nil)
+			psc := newFakePacketCaptureController(t, nil, []runtime.Object{ps.ps}, nil, nil)
 			stopCh := make(chan struct{})
 			defer close(stopCh)
 			psc.crdInformerFactory.Start(stopCh)
 			psc.crdInformerFactory.WaitForCacheSync(stopCh)
 
 			if ps.existingState != nil {
-				psc.runningPacketSamplings[ps.existingState.tag] = ps.existingState
+				psc.runningPacketCaptures[ps.existingState.tag] = ps.existingState
 			}
 
 			if ps.expectedCalls != nil {
 				ps.expectedCalls(psc.mockOFClient)
 			}
 
-			err := psc.syncPacketSampling(ps.ps.Name)
+			err := psc.syncPacketCapture(ps.ps.Name)
 			require.NoError(t, err)
-			assert.Equal(t, ps.newState, psc.runningPacketSamplings[ps.existingState.tag])
+			assert.Equal(t, ps.newState, psc.runningPacketCaptures[ps.existingState.tag])
 		})
 	}
 }
 
-// TestPacketSamplingControllerRun was used to validate the whole run process is working. It doesn't wait for
+// TestPacketCaptureControllerRun was used to validate the whole run process is working. It doesn't wait for
 // the testing ps to finish.
-func TestPacketSamplingControllerRun(t *testing.T) {
+func TestPacketCaptureControllerRun(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
-	defaultFS.MkdirAll("/tmp/antrea/packetsampling/packets", 0755)
+	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
 	ps := struct {
 		name     string
 		ps       *crdv1alpha1.PacketCapture
-		newState *packetSamplingState
+		newState *packetCaptureState
 	}{
-		name: "start packetsampling",
+		name: "start packetcapture",
 		ps: &crdv1alpha1.PacketCapture{
 			ObjectMeta: metav1.ObjectMeta{Name: "ps1", UID: "uid1"},
 			Spec: crdv1alpha1.PacketCaptureSpec{
@@ -610,27 +610,27 @@ func TestPacketSamplingControllerRun(t *testing.T) {
 				},
 			},
 		},
-		newState: &packetSamplingState{tag: 1},
+		newState: &packetCaptureState{tag: 1},
 	}
 
-	psc := newFakePacketSamplingController(t, nil, []runtime.Object{ps.ps}, nil, nil)
+	psc := newFakePacketCaptureController(t, nil, []runtime.Object{ps.ps}, nil, nil)
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	psc.crdInformerFactory.Start(stopCh)
 	psc.crdInformerFactory.WaitForCacheSync(stopCh)
 	psc.informerFactory.Start(stopCh)
 	psc.informerFactory.WaitForCacheSync(stopCh)
-	psc.mockOFClient.EXPECT().InstallPacketSamplingFlows(ps.newState.tag, false, false,
+	psc.mockOFClient.EXPECT().InstallPacketCaptureFlows(ps.newState.tag, false, false,
 		&binding.Packet{DestinationIP: net.ParseIP(pod2.Status.PodIP), IPProto: protocol.Type_ICMP},
 		nil, ofPortPod1, crdv1alpha1.DefaultPacketCaptureTimeout)
 	go psc.Run(stopCh)
 	time.Sleep(300 * time.Millisecond)
 }
 
-func TestProcessPacketSamplingItem(t *testing.T) {
+func TestProcessPacketCaptureItem(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
-	defaultFS.MkdirAll("/tmp/antrea/packetsampling/packets", 0755)
+	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
 	pc := struct {
 		ps           *crdv1alpha1.PacketCapture
 		ofPort       uint32
@@ -663,25 +663,25 @@ func TestProcessPacketSamplingItem(t *testing.T) {
 		expected: true,
 	}
 
-	psc := newFakePacketSamplingController(t, nil, []runtime.Object{pc.ps}, nil, nil)
+	psc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.ps}, nil, nil)
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	psc.crdInformerFactory.Start(stopCh)
 	psc.crdInformerFactory.WaitForCacheSync(stopCh)
 
-	psc.mockOFClient.EXPECT().InstallPacketSamplingFlows(uint8(1), false, pc.receiverOnly, pc.packet, nil, pc.ofPort, uint16(crdv1alpha1.DefaultPacketCaptureTimeout))
-	psc.enqueuePacketSampling(pc.ps)
-	got := psc.processPacketSamplingItem()
+	psc.mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(1), false, pc.receiverOnly, pc.packet, nil, pc.ofPort, uint16(crdv1alpha1.DefaultPacketCaptureTimeout))
+	psc.enqueuePacketCapture(pc.ps)
+	got := psc.processPacketCaptureItem()
 	assert.Equal(t, pc.expected, got)
 }
 
-func TestStartPacketSampling(t *testing.T) {
+func TestStartPacketCapture(t *testing.T) {
 	defaultFS = afero.NewMemMapFs()
 	defaultFS.MkdirAll(packetDirectory, 0755)
 	tcs := []struct {
 		name           string
 		ps             *crdv1alpha1.PacketCapture
-		state          *packetSamplingState
+		state          *packetCaptureState
 		ofPort         uint32
 		receiverOnly   bool
 		packet         *binding.Packet
@@ -712,7 +712,7 @@ func TestStartPacketSampling(t *testing.T) {
 					Phase: crdv1alpha1.PacketCaptureRunning,
 				},
 			},
-			state:  &packetSamplingState{tag: 1},
+			state:  &packetCaptureState{tag: 1},
 			ofPort: ofPortPod1,
 			packet: &binding.Packet{
 				SourceIP:       net.ParseIP(pod1IPv4),
@@ -724,7 +724,7 @@ func TestStartPacketSampling(t *testing.T) {
 				ICMPType:       8,
 			},
 			expectedCalls: func(mockOFClient *openflowtest.MockClient) {
-				mockOFClient.EXPECT().InstallPacketSamplingFlows(uint8(1), false, false,
+				mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(1), false, false,
 					&binding.Packet{
 						DestinationIP: net.ParseIP(pod2IPv4),
 						IPProto:       1,
@@ -733,7 +733,7 @@ func TestStartPacketSampling(t *testing.T) {
 			},
 		},
 		{
-			name: "Pod-to-IPv4 packetsampling",
+			name: "Pod-to-IPv4 packetcapture",
 			ps: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "ps2", UID: "uid2"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -752,7 +752,7 @@ func TestStartPacketSampling(t *testing.T) {
 					Phase: crdv1alpha1.PacketCaptureRunning,
 				},
 			},
-			state:  &packetSamplingState{tag: 2},
+			state:  &packetCaptureState{tag: 2},
 			ofPort: ofPortPod1,
 			packet: &binding.Packet{
 				SourceIP:      net.ParseIP(pod1IPv4),
@@ -763,7 +763,7 @@ func TestStartPacketSampling(t *testing.T) {
 				ICMPType:      8,
 			},
 			expectedCalls: func(mockOFClient *openflowtest.MockClient) {
-				mockOFClient.EXPECT().InstallPacketSamplingFlows(uint8(2), true, false, &binding.Packet{
+				mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(2), true, false, &binding.Packet{
 					DestinationIP: net.ParseIP(dstIPv4),
 					IPProto:       1,
 				}, nil, ofPortPod1, crdv1alpha1.DefaultPacketCaptureTimeout)
@@ -773,7 +773,7 @@ func TestStartPacketSampling(t *testing.T) {
 
 	for _, tt := range tcs {
 		t.Run(tt.name, func(t *testing.T) {
-			tfc := newFakePacketSamplingController(t, nil, []runtime.Object{tt.ps}, nil, tt.nodeConfig)
+			tfc := newFakePacketCaptureController(t, nil, []runtime.Object{tt.ps}, nil, tt.nodeConfig)
 			if tt.expectedCalls != nil {
 				tt.expectedCalls(tfc.mockOFClient)
 			}
@@ -786,7 +786,7 @@ func TestStartPacketSampling(t *testing.T) {
 				klog.LogToStderr(true)
 			}()
 
-			err := tfc.startPacketSampling(tt.ps, tt.state)
+			err := tfc.startPacketCapture(tt.ps, tt.state)
 			if tt.expectedErr != "" {
 				assert.ErrorContains(t, err, tt.expectedErr)
 			} else {
@@ -953,7 +953,7 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 
 	for _, ps := range pss {
 		t.Run(ps.name, func(t *testing.T) {
-			psc := newFakePacketSamplingController(t, ps.objs, []runtime.Object{ps.ps}, nil, nil)
+			psc := newFakePacketCaptureController(t, ps.objs, []runtime.Object{ps.ps}, nil, nil)
 			stopCh := make(chan struct{})
 			defer close(stopCh)
 			psc.crdInformerFactory.Start(stopCh)

@@ -94,7 +94,7 @@ type clientOptions struct {
 	enableMulticluster         bool
 	enableL7NetworkPolicy      bool
 	enableL7FlowExporter       bool
-	enablePacketSampling       bool
+	enablePacketCapture        bool
 	trafficEncryptionMode      config.TrafficEncryptionModeType
 }
 
@@ -169,8 +169,8 @@ func enableMulticluster(o *clientOptions) {
 	o.enableMulticluster = true
 }
 
-func enablePacketSampling(o *clientOptions) {
-	o.enablePacketSampling = true
+func enablePacketCapture(o *clientOptions) {
+	o.enablePacketCapture = true
 }
 
 func setTrafficEncryptionMode(trafficEncryptionMode config.TrafficEncryptionModeType) clientOptionsFn {
@@ -424,7 +424,7 @@ func newFakeClientWithBridge(
 		o.enableMulticluster,
 		NewGroupAllocator(),
 		false,
-		o.enablePacketSampling,
+		o.enablePacketCapture,
 		defaultPacketInRate)
 
 	// Meters must be supported to enable Egress traffic shaping.
@@ -1784,7 +1784,7 @@ func Test_client_InstallEgressQoS(t *testing.T) {
 	require.False(t, ok)
 }
 
-func Test_client_InstallPacketSamplingFlows(t *testing.T) {
+func Test_client_InstallPacketCaptureFlows(t *testing.T) {
 	type fields struct {
 	}
 	type args struct {
@@ -1804,7 +1804,7 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 		prepareFunc func(*gomock.Controller) *client
 	}{
 		{
-			name:   "packetsampling flow",
+			name:   "packetcapture flow",
 			fields: fields{},
 			args: args{
 				dataplaneTag: 1,
@@ -1818,10 +1818,10 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 				},
 			},
 			wantErr:     false,
-			prepareFunc: preparePacketSamplingFlow,
+			prepareFunc: preparePacketCaptureFlow,
 		},
 		{
-			name:   "packetsampling flow with receiver only",
+			name:   "packetcapture flow with receiver only",
 			fields: fields{},
 			args: args{
 				dataplaneTag: 1,
@@ -1836,10 +1836,10 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 				},
 			},
 			wantErr:     false,
-			prepareFunc: preparePacketSamplingFlow,
+			prepareFunc: preparePacketCaptureFlow,
 		},
 		{
-			name:   "packetsampling flow with sender only",
+			name:   "packetcapture flow with sender only",
 			fields: fields{},
 			args: args{
 				dataplaneTag: 1,
@@ -1854,10 +1854,10 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 				},
 			},
 			wantErr:     false,
-			prepareFunc: preparePacketSamplingFlow,
+			prepareFunc: preparePacketCaptureFlow,
 		},
 		{
-			name:   "packetsampling flow with endpoints packets",
+			name:   "packetcapture flow with endpoints packets",
 			fields: fields{},
 			args: args{
 				dataplaneTag: 1,
@@ -1890,15 +1890,15 @@ func Test_client_InstallPacketSamplingFlows(t *testing.T) {
 				},
 			},
 			wantErr:     false,
-			prepareFunc: preparePacketSamplingFlow,
+			prepareFunc: preparePacketCaptureFlow,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			c := tt.prepareFunc(ctrl)
-			if err := c.InstallPacketSamplingFlows(tt.args.dataplaneTag, tt.args.senderOnly, tt.args.receiverOnly, tt.args.packet, nil, 0, 300); (err != nil) != tt.wantErr {
-				t.Errorf("InstallPacketSamplingFlows() error = %v, wantErr %v", err, tt.wantErr)
+			if err := c.InstallPacketCaptureFlows(tt.args.dataplaneTag, tt.args.senderOnly, tt.args.receiverOnly, tt.args.packet, nil, 0, 300); (err != nil) != tt.wantErr {
+				t.Errorf("InstallPacketCaptureFlows() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -2044,9 +2044,9 @@ func Test_client_SendTraceflowPacket(t *testing.T) {
 	}
 }
 
-func preparePacketSamplingFlow(ctrl *gomock.Controller) *client {
+func preparePacketCaptureFlow(ctrl *gomock.Controller) *client {
 	m := opstest.NewMockOFEntryOperations(ctrl)
-	fc := newFakeClientWithBridge(m, true, false, config.K8sNode, config.TrafficEncapModeEncap, ovsoftest.NewMockBridge(ctrl), enablePacketSampling)
+	fc := newFakeClientWithBridge(m, true, false, config.K8sNode, config.TrafficEncapModeEncap, ovsoftest.NewMockBridge(ctrl), enablePacketCapture)
 	defer resetPipelines()
 
 	m.EXPECT().AddAll(gomock.Any()).Return(nil).Times(1)

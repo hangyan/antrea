@@ -43,7 +43,7 @@ import (
 	"antrea.io/antrea/pkg/agent/controller/networkpolicy"
 	"antrea.io/antrea/pkg/agent/controller/networkpolicy/l7engine"
 	"antrea.io/antrea/pkg/agent/controller/noderoute"
-	"antrea.io/antrea/pkg/agent/controller/packetsampling"
+	"antrea.io/antrea/pkg/agent/controller/packetcapture"
 	"antrea.io/antrea/pkg/agent/controller/serviceexternalip"
 	"antrea.io/antrea/pkg/agent/controller/traceflow"
 	"antrea.io/antrea/pkg/agent/controller/trafficcontrol"
@@ -115,7 +115,7 @@ func run(o *Options) error {
 	informerFactory := informers.NewSharedInformerFactory(k8sClient, informerDefaultResync)
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdClient, informerDefaultResync)
 	traceflowInformer := crdInformerFactory.Crd().V1beta1().Traceflows()
-	packetSamplingInformer := crdInformerFactory.Crd().V1alpha1().PacketSamplings()
+	packetCaptureInformer := crdInformerFactory.Crd().V1alpha1().PacketCaptures()
 	egressInformer := crdInformerFactory.Crd().V1beta1().Egresses()
 	externalIPPoolInformer := crdInformerFactory.Crd().V1beta1().ExternalIPPools()
 	trafficControlInformer := crdInformerFactory.Crd().V1alpha2().TrafficControls()
@@ -181,7 +181,7 @@ func run(o *Options) error {
 		enableMulticlusterGW,
 		groupIDAllocator,
 		*o.config.EnablePrometheusMetrics,
-		features.DefaultFeatureGate.Enabled(features.PacketSampling),
+		features.DefaultFeatureGate.Enabled(features.PacketCapture),
 		o.config.PacketInRate,
 	)
 
@@ -633,14 +633,14 @@ func run(o *Options) error {
 			o.enableAntreaProxy)
 	}
 
-	var packetSamplingController *packetsampling.Controller
-	if features.DefaultFeatureGate.Enabled(features.PacketSampling) {
-		packetSamplingController = packetsampling.NewPacketSamplingController(
+	var packetCaptureController *packetcapture.Controller
+	if features.DefaultFeatureGate.Enabled(features.PacketCapture) {
+		packetCaptureController = packetcapture.NewPacketCaptureController(
 			k8sClient,
 			crdClient,
 			serviceInformer,
 			endpointsInformer,
-			packetSamplingInformer,
+			packetCaptureInformer,
 			ofClient,
 			ifaceStore,
 			nodeConfig,
@@ -788,8 +788,8 @@ func run(o *Options) error {
 		go traceflowController.Run(stopCh)
 	}
 
-	if features.DefaultFeatureGate.Enabled(features.PacketSampling) {
-		go packetSamplingController.Run(stopCh)
+	if features.DefaultFeatureGate.Enabled(features.PacketCapture) {
+		go packetCaptureController.Run(stopCh)
 	}
 
 	if o.enableAntreaProxy {

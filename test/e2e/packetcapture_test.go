@@ -56,9 +56,9 @@ type psTestCase struct {
 	skipIfNeeded func(t *testing.T)
 }
 
-// TestPacketSampling is the top-level test which contains all subtests for
+// TestPacketCapture is the top-level test which contains all subtests for
 // PacketCapture related test cases so they can share setup, teardown.
-func TestPacketSampling(t *testing.T) {
+func TestPacketCapture(t *testing.T) {
 
 	data, err := setupTest(t)
 	if err != nil {
@@ -66,26 +66,26 @@ func TestPacketSampling(t *testing.T) {
 	}
 	defer teardownTest(t, data)
 
-	var previousAgentPacketSamplingEnableState bool
-	var previousControllerPacketSamplingEnableState bool
+	var previousAgentPacketCaptureEnableState bool
+	var previousControllerPacketCaptureEnableState bool
 
 	ac := func(config *agentconfig.AgentConfig) {
-		previousAgentPacketSamplingEnableState = config.FeatureGates[string(features.PacketSampling)]
-		config.FeatureGates[string(features.PacketSampling)] = true
+		previousAgentPacketCaptureEnableState = config.FeatureGates[string(features.PacketCapture)]
+		config.FeatureGates[string(features.PacketCapture)] = true
 	}
 	cc := func(config *controllerconfig.ControllerConfig) {
-		previousControllerPacketSamplingEnableState = config.FeatureGates[string(features.PacketSampling)]
-		config.FeatureGates[string(features.PacketSampling)] = true
+		previousControllerPacketCaptureEnableState = config.FeatureGates[string(features.PacketCapture)]
+		config.FeatureGates[string(features.PacketCapture)] = true
 	}
 	if err := data.mutateAntreaConfigMap(cc, ac, true, true); err != nil {
 		t.Fatalf("Failed to enable PacketCapture flag: %v", err)
 	}
 	defer func() {
 		ac := func(config *agentconfig.AgentConfig) {
-			config.FeatureGates[string(features.PacketSampling)] = previousAgentPacketSamplingEnableState
+			config.FeatureGates[string(features.PacketCapture)] = previousAgentPacketCaptureEnableState
 		}
 		cc := func(config *controllerconfig.ControllerConfig) {
-			config.FeatureGates[string(features.PacketSampling)] = previousControllerPacketSamplingEnableState
+			config.FeatureGates[string(features.PacketCapture)] = previousControllerPacketCaptureEnableState
 		}
 		if err := data.mutateAntreaConfigMap(cc, ac, true, true); err != nil {
 			t.Errorf("Failed to disable PacketCapture flag: %v", err)
@@ -123,15 +123,15 @@ func TestPacketSampling(t *testing.T) {
 	require.NoError(t, err)
 	defer data.clientset.CoreV1().Secrets(psNamespace).Delete(context.TODO(), psSecretName, metav1.DeleteOptions{})
 
-	t.Run("testPacketSamplingBasic", func(t *testing.T) {
-		testPacketSamplingBasic(t, data)
+	t.Run("testPacketCaptureBasic", func(t *testing.T) {
+		testPacketCaptureBasic(t, data)
 	})
-	t.Run("testPacketSampling", func(t *testing.T) {
-		testPacketSampling(t, data)
+	t.Run("testPacketCapture", func(t *testing.T) {
+		testPacketCapture(t, data)
 	})
 }
 
-func testPacketSampling(t *testing.T, data *TestData) {
+func testPacketCapture(t *testing.T, data *TestData) {
 	nodeIdx := 0
 	if len(clusterInfo.windowsNodes) != 0 {
 		nodeIdx = clusterInfo.windowsNodes[0]
@@ -252,21 +252,21 @@ func testPacketSampling(t *testing.T, data *TestData) {
 			expectedNum:   5,
 		},
 	}
-	t.Run("testPacketSampling", func(t *testing.T) {
+	t.Run("testPacketCapture", func(t *testing.T) {
 		for _, tc := range testcases {
 			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
-				runPacketSamplingTest(t, data, tc)
+				runPacketCaptureTest(t, data, tc)
 			})
 		}
 	})
 
 }
 
-// testPacketSamplingTCP verifies if PacketCapture can capture tcp packets. this function only contains basic
+// testPacketCaptureTCP verifies if PacketCapture can capture tcp packets. this function only contains basic
 // cases with pod-to-pod.
-func testPacketSamplingBasic(t *testing.T, data *TestData) {
+func testPacketCaptureBasic(t *testing.T, data *TestData) {
 	nodeIdx := 0
 	if len(clusterInfo.windowsNodes) != 0 {
 		nodeIdx = clusterInfo.windowsNodes[0]
@@ -506,12 +506,12 @@ func testPacketSamplingBasic(t *testing.T, data *TestData) {
 			expectedReason: fmt.Sprintf("Node: %s, error:failed to get the destination pod %s/%s: pods \"%s\" not found", node1, data.testNamespace, nonExistPodName, nonExistPodName),
 		},
 	}
-	t.Run("testPacketSamplingBasic", func(t *testing.T) {
+	t.Run("testPacketCaptureBasic", func(t *testing.T) {
 		for _, tc := range testcases {
 			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
-				runPacketSamplingTest(t, data, tc)
+				runPacketCaptureTest(t, data, tc)
 			})
 		}
 	})
@@ -525,7 +525,7 @@ func getOSString() string {
 	}
 }
 
-func runPacketSamplingTest(t *testing.T, data *TestData, tc psTestCase) {
+func runPacketCaptureTest(t *testing.T, data *TestData, tc psTestCase) {
 	switch tc.ipVersion {
 	case 4:
 		skipIfNotIPv4Cluster(t)
@@ -547,11 +547,11 @@ func runPacketSamplingTest(t *testing.T, data *TestData, tc psTestCase) {
 		dstPodIPs = podIPs[dstPodName]
 	}
 
-	if _, err := data.crdClient.CrdV1alpha1().PacketSamplings().Create(context.TODO(), tc.ps, metav1.CreateOptions{}); err != nil {
+	if _, err := data.crdClient.CrdV1alpha1().PacketCaptures().Create(context.TODO(), tc.ps, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("Error when creating PacketCapture: %v", err)
 	}
 	defer func() {
-		if err := data.crdClient.CrdV1alpha1().PacketSamplings().Delete(context.TODO(), tc.ps.Name, metav1.DeleteOptions{}); err != nil {
+		if err := data.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), tc.ps.Name, metav1.DeleteOptions{}); err != nil {
 			t.Errorf("Error when deleting PacketCapture: %v", err)
 		}
 	}()
@@ -604,7 +604,7 @@ func runPacketSamplingTest(t *testing.T, data *TestData, tc psTestCase) {
 		}
 	}
 
-	ps, err := data.waitForPacketSampling(t, tc.ps.Name, tc.expectedPhase)
+	ps, err := data.waitForPacketCapture(t, tc.ps.Name, tc.expectedPhase)
 	if err != nil {
 		t.Fatalf("Error: Get PacketCapture failed: %v", err)
 	}
@@ -619,12 +619,12 @@ func runPacketSamplingTest(t *testing.T, data *TestData, tc psTestCase) {
 
 }
 
-func (data *TestData) waitForPacketSampling(t *testing.T, name string, phase crdv1alpha1.PacketCapturePhase) (*crdv1alpha1.PacketCapture, error) {
+func (data *TestData) waitForPacketCapture(t *testing.T, name string, phase crdv1alpha1.PacketCapturePhase) (*crdv1alpha1.PacketCapture, error) {
 	var ps *crdv1alpha1.PacketCapture
 	var err error
 	timeout := 15 * time.Second
 	if err = wait.PollUntilContextTimeout(context.Background(), defaultInterval, timeout, true, func(ctx context.Context) (bool, error) {
-		ps, err = data.crdClient.CrdV1alpha1().PacketSamplings().Get(ctx, name, metav1.GetOptions{})
+		ps, err = data.crdClient.CrdV1alpha1().PacketCaptures().Get(ctx, name, metav1.GetOptions{})
 		if err != nil || ps.Status.Phase != phase {
 			return false, nil
 		}

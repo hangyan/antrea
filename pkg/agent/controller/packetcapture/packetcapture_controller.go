@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package packetsampling
+package packetcapture
 
 import (
 	"context"
@@ -61,7 +61,7 @@ const (
 )
 
 const (
-	controllerName               = "AntreaAgentPacketSamplingController"
+	controllerName               = "AntreaAgentPacketCaptureController"
 	resyncPeriod   time.Duration = 0
 
 	minRetryDelay = 5 * time.Second
@@ -74,10 +74,10 @@ const (
 	maxTagNum uint8 = 15
 
 	// reason for timeout
-	samplingTimeoutReason  = "PacketCapture timeout"
+	captureTimeoutReason   = "PacketCapture timeout"
 	defaultTimeoutDuration = time.Second * time.Duration(crdv1alpha1.DefaultPacketCaptureTimeout)
 
-	samplingStatusUpdatePeriod = 10 * time.Second
+	captureStatusUpdatePeriod = 10 * time.Second
 )
 
 var (
@@ -88,10 +88,10 @@ var (
 )
 
 func getPacketDirectory() string {
-	return filepath.Join(os.TempDir(), "antrea", "packetsampling", "packets")
+	return filepath.Join(os.TempDir(), "antrea", "packetcapture", "packets")
 }
 
-type packetSamplingState struct {
+type packetCaptureState struct {
 	// name is the PacketCapture name
 	name string
 	// tag is a node scope unique id for the PacketCapture. It will be write into ovs reg and parsed in packetIn handler
@@ -114,56 +114,56 @@ type packetSamplingState struct {
 }
 
 type Controller struct {
-	kubeClient                  clientset.Interface
-	crdClient                   clientsetversioned.Interface
-	serviceLister               corelisters.ServiceLister
-	serviceListerSynced         cache.InformerSynced
-	endpointLister              corelisters.EndpointsLister
-	endpointSynced              cache.InformerSynced
-	packetSamplingInformer      crdinformers.PacketSamplingInformer
-	packetSamplingLister        crdlisters.PacketSamplingLister
-	packetSamplingSynced        cache.InformerSynced
-	ofClient                    openflow.Client
-	interfaceStore              interfacestore.InterfaceStore
-	nodeConfig                  *config.NodeConfig
-	queue                       workqueue.RateLimitingInterface
-	runningPacketSamplingsMutex sync.RWMutex
-	runningPacketSamplings      map[uint8]*packetSamplingState
-	sftpUploader                ftp.UpLoader
+	kubeClient                 clientset.Interface
+	crdClient                  clientsetversioned.Interface
+	serviceLister              corelisters.ServiceLister
+	serviceListerSynced        cache.InformerSynced
+	endpointLister             corelisters.EndpointsLister
+	endpointSynced             cache.InformerSynced
+	packetCaptureInformer      crdinformers.PacketCaptureInformer
+	packetCaptureLister        crdlisters.PacketCaptureLister
+	packetCaptureSynced        cache.InformerSynced
+	ofClient                   openflow.Client
+	interfaceStore             interfacestore.InterfaceStore
+	nodeConfig                 *config.NodeConfig
+	queue                      workqueue.RateLimitingInterface
+	runningPacketCapturesMutex sync.RWMutex
+	runningPacketCaptures      map[uint8]*packetCaptureState
+	sftpUploader               ftp.UpLoader
 }
 
-func NewPacketSamplingController(
+func NewPacketCaptureController(
 	kubeClient clientset.Interface,
 	crdClient clientsetversioned.Interface,
 	serviceInformer coreinformers.ServiceInformer,
 	endpointInformer coreinformers.EndpointsInformer,
-	packetSamplingInformer crdinformers.PacketSamplingInformer,
+	packetCaptureInformer crdinformers.PacketCaptureInformer,
 	client openflow.Client,
 	interfaceStore interfacestore.InterfaceStore,
 	nodeConfig *config.NodeConfig,
 ) *Controller {
 	c := &Controller{
-		kubeClient:             kubeClient,
-		crdClient:              crdClient,
-		packetSamplingInformer: packetSamplingInformer,
-		packetSamplingLister:   packetSamplingInformer.Lister(),
-		packetSamplingSynced:   packetSamplingInformer.Informer().HasSynced,
-		ofClient:               client,
-		interfaceStore:         interfaceStore,
-		nodeConfig:             nodeConfig,
+		kubeClient:            kubeClient,
+		crdClient:             crdClient,
+		packetCaptureInformer: packetCaptureInformer,
+		packetCaptureLister:   packetCaptureInformer.Lister(),
+		packetCaptureSynced:   packetCaptureInformer.Informer().HasSynced,
+		ofClient:              client,
+		interfaceStore:        interfaceStore,
+		nodeConfig:            nodeConfig,
 		queue: workqueue.NewRateLimitingQueueWithConfig(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay),
-			workqueue.RateLimitingQueueConfig{Name: "packetsampling"}),
-		runningPacketSamplings: make(map[uint8]*packetSamplingState),
-		sftpUploader:           &ftp.SftpUploader{},
+			workqueue.RateLimitingQueueConfig{Name: "packetcapture"}),
+		runningPacketCaptures: make(map[uint8]*packetCaptureState),
+		sftpUploader:          &ftp.SftpUploader{},
 	}
 
-	packetSamplingInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addPacketSampling,
-		UpdateFunc: c.updatePacketSampling,
-		DeleteFunc: c.deletePacketSampling,
+	packetCaptureInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.addPacketCapture,
+		UpdateFunc: c.updatePacketCapture,
+		DeleteFunc: c.deletePacketCapture,
 	}, resyncPeriod)
 
-	c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInCategoryPS), c)
+	c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInCategoryPC), c)
 
 	c.serviceLister = serviceInformer.Lister()
 	c.serviceListerSynced = serviceInformer.Informer().HasSynced
@@ -172,7 +172,7 @@ func NewPacketSamplingController(
 	return c
 }
 
-func (c *Controller) enqueuePacketSampling(ps *crdv1alpha1.PacketCapture) {
+func (c *Controller) enqueuePacketCapture(ps *crdv1alpha1.PacketCapture) {
 	c.queue.Add(ps.Name)
 }
 
@@ -181,10 +181,10 @@ func (c *Controller) enqueuePacketSampling(ps *crdv1alpha1.PacketCapture) {
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.queue.ShutDown()
 
-	klog.InfoS("Starting packetsampling controller", "name", controllerName)
-	defer klog.InfoS("Shutting down packetsampling controller", "name", controllerName)
+	klog.InfoS("Starting packetcapture controller", "name", controllerName)
+	defer klog.InfoS("Shutting down packetcapture controller", "name", controllerName)
 
-	cacheSynced := []cache.InformerSynced{c.packetSamplingSynced, c.serviceListerSynced, c.endpointSynced}
+	cacheSynced := []cache.InformerSynced{c.packetCaptureSynced, c.serviceListerSynced, c.endpointSynced}
 	if !cache.WaitForNamedCacheSync(controllerName, stopCh, cacheSynced...) {
 		return
 	}
@@ -196,12 +196,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 	err := defaultFS.MkdirAll(packetDirectory, 0755)
 	if err != nil {
-		klog.ErrorS(err, "Couldn't create directory for storing sampling packets", "directory", packetDirectory)
+		klog.ErrorS(err, "Couldn't create directory for storing captured packets", "directory", packetDirectory)
 		return
 	}
 
 	go func() {
-		wait.Until(c.checkPacketSamplingTimeout, timeoutCheckInterval, stopCh)
+		wait.Until(c.checkPacketCaptureTimeout, timeoutCheckInterval, stopCh)
 	}()
 
 	for i := 0; i < defaultWorkers; i++ {
@@ -210,13 +210,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (c *Controller) checkPacketSamplingTimeout() {
-	c.runningPacketSamplingsMutex.RLock()
-	ss := make([]string, 0, len(c.runningPacketSamplings))
-	for _, psState := range c.runningPacketSamplings {
+func (c *Controller) checkPacketCaptureTimeout() {
+	c.runningPacketCapturesMutex.RLock()
+	ss := make([]string, 0, len(c.runningPacketCaptures))
+	for _, psState := range c.runningPacketCaptures {
 		ss = append(ss, psState.name)
 	}
-	c.runningPacketSamplingsMutex.RUnlock()
+	c.runningPacketCapturesMutex.RUnlock()
 	for _, psName := range ss {
 		// Re-post all running PacketCapture requests to the work queue to
 		// be processed and checked for timeout.
@@ -224,26 +224,26 @@ func (c *Controller) checkPacketSamplingTimeout() {
 	}
 }
 
-func (c *Controller) addPacketSampling(obj interface{}) {
+func (c *Controller) addPacketCapture(obj interface{}) {
 	ps := obj.(*crdv1alpha1.PacketCapture)
 	klog.InfoS("Processing PacketCapture ADD event", "name", ps.Name)
-	c.enqueuePacketSampling(ps)
+	c.enqueuePacketCapture(ps)
 }
 
-func (c *Controller) updatePacketSampling(_, obj interface{}) {
+func (c *Controller) updatePacketCapture(_, obj interface{}) {
 	ps := obj.(*crdv1alpha1.PacketCapture)
 	klog.InfoS("Processing PacketCapture UPDATE EVENT", "name", ps.Name)
-	c.enqueuePacketSampling(ps)
+	c.enqueuePacketCapture(ps)
 }
 
-func (c *Controller) deletePacketSampling(obj interface{}) {
+func (c *Controller) deletePacketCapture(obj interface{}) {
 	ps := obj.(*crdv1alpha1.PacketCapture)
 	klog.InfoS("Processing PacketCapture DELETE event", "name", ps.Name)
 	err := deletePcapngFile(string(ps.UID))
 	if err != nil {
 		klog.ErrorS(err, "Couldn't delete pcapng file")
 	}
-	c.enqueuePacketSampling(ps)
+	c.enqueuePacketCapture(ps)
 }
 
 func deletePcapngFile(uid string) error {
@@ -255,11 +255,11 @@ func uidToPath(uid string) string {
 }
 
 func (c *Controller) worker() {
-	for c.processPacketSamplingItem() {
+	for c.processPacketCaptureItem() {
 	}
 }
 
-func (c *Controller) processPacketSamplingItem() bool {
+func (c *Controller) processPacketCaptureItem() bool {
 	obj, quit := c.queue.Get()
 	if quit {
 		return false
@@ -270,7 +270,7 @@ func (c *Controller) processPacketSamplingItem() bool {
 		c.queue.Forget(obj)
 		klog.ErrorS(nil, "Expected string in work queue but got", "obj", obj)
 		return true
-	} else if err := c.syncPacketSampling(key); err == nil {
+	} else if err := c.syncPacketCapture(key); err == nil {
 		c.queue.Forget(key)
 	} else {
 		klog.ErrorS(err, "Error syncing PacketCapture, exiting", "key", key)
@@ -278,10 +278,10 @@ func (c *Controller) processPacketSamplingItem() bool {
 	return true
 }
 
-func (c *Controller) cleanupPacketSampling(psName string) {
-	psState := c.deletePacketSamplingState(psName)
+func (c *Controller) cleanupPacketCapture(psName string) {
+	psState := c.deletePacketCaptureState(psName)
 	if psState != nil {
-		err := c.ofClient.UninstallPacketSamplingFlows(psState.tag)
+		err := c.ofClient.UninstallPacketCaptureFlows(psState.tag)
 		if err != nil {
 			klog.ErrorS(err, "Error cleaning up flows for PacketCapture", "name", psName)
 		}
@@ -293,25 +293,25 @@ func (c *Controller) cleanupPacketSampling(psName string) {
 	}
 }
 
-func (c *Controller) deletePacketSamplingState(psName string) *packetSamplingState {
-	c.runningPacketSamplingsMutex.Lock()
-	defer c.runningPacketSamplingsMutex.Unlock()
+func (c *Controller) deletePacketCaptureState(psName string) *packetCaptureState {
+	c.runningPacketCapturesMutex.Lock()
+	defer c.runningPacketCapturesMutex.Unlock()
 
-	for tag, state := range c.runningPacketSamplings {
+	for tag, state := range c.runningPacketCaptures {
 		if state.name == psName {
-			delete(c.runningPacketSamplings, tag)
+			delete(c.runningPacketCaptures, tag)
 			return state
 		}
 	}
 	return nil
 }
 
-func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketCapture, psState *packetSamplingState) error {
+func (c *Controller) startPacketCapture(ps *crdv1alpha1.PacketCapture, psState *packetCaptureState) error {
 	var err error
 	defer func() {
 		if err != nil {
-			c.cleanupPacketSampling(ps.Name)
-			c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketCaptureFailed, fmt.Sprintf("Node: %s, error:%+v", c.nodeConfig.Name, err), 0)
+			c.cleanupPacketCapture(ps.Name)
+			c.updatePacketCaptureStatus(ps, crdv1alpha1.PacketCaptureFailed, fmt.Sprintf("Node: %s, error:%+v", c.nodeConfig.Name, err), 0)
 
 		}
 	}()
@@ -353,7 +353,7 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketCapture, psState 
 		}
 	}
 
-	c.runningPacketSamplingsMutex.Lock()
+	c.runningPacketCapturesMutex.Lock()
 	psState.maxNumCapturedPackets = ps.Spec.FirstNCaptureConfig.Number
 	var file afero.File
 	filePath := uidToPath(string(ps.UID))
@@ -374,16 +374,16 @@ func (c *Controller) startPacketSampling(ps *crdv1alpha1.PacketCapture, psState 
 	psState.shouldSyncPackets = len(podInterfaces) > 0
 	psState.pcapngFile = file
 	psState.pcapngWriter = writer
-	psState.updateRateLimiter = rate.NewLimiter(rate.Every(samplingStatusUpdatePeriod), 1)
-	c.runningPacketSamplings[psState.tag] = psState
-	c.runningPacketSamplingsMutex.Unlock()
+	psState.updateRateLimiter = rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1)
+	c.runningPacketCaptures[psState.tag] = psState
+	c.runningPacketCapturesMutex.Unlock()
 
 	timeout := ps.Spec.Timeout
 	if timeout == 0 {
 		timeout = crdv1alpha1.DefaultPacketCaptureTimeout
 	}
 	klog.V(2).InfoS("Installing flow entries for PacketCapture", "name", ps.Name)
-	err = c.ofClient.InstallPacketSamplingFlows(psState.tag, senderOnly, receiverOnly, senderPacket, endpointPackets, ofPort, timeout)
+	err = c.ofClient.InstallPacketCaptureFlows(psState.tag, senderOnly, receiverOnly, senderPacket, endpointPackets, ofPort, timeout)
 	if err != nil {
 		klog.ErrorS(err, "Install flow entries failed", "name", ps.Name)
 	}
@@ -539,16 +539,16 @@ func parseTargetProto(packet *crdv1alpha1.Packet) (uint8, error) {
 	return proto2, nil
 }
 
-func (c *Controller) syncPacketSampling(psName string) error {
+func (c *Controller) syncPacketCapture(psName string) error {
 	startTime := time.Now()
 	defer func() {
 		klog.V(4).InfoS("Finished syncing PacketCapture", "name", psName, "startTime", time.Since(startTime))
 	}()
 
-	ps, err := c.packetSamplingLister.Get(psName)
+	ps, err := c.packetCaptureLister.Get(psName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			c.cleanupPacketSampling(psName)
+			c.cleanupPacketCapture(psName)
 			return nil
 		}
 		return err
@@ -556,11 +556,11 @@ func (c *Controller) syncPacketSampling(psName string) error {
 
 	switch ps.Status.Phase {
 	case "":
-		err = c.initPacketSampling(ps)
+		err = c.initPacketCapture(ps)
 	case crdv1alpha1.PacketCaptureRunning:
-		err = c.checkPacketSamplingStatus(ps)
+		err = c.checkPacketCaptureStatus(ps)
 	default:
-		c.cleanupPacketSampling(psName)
+		c.cleanupPacketCapture(psName)
 	}
 	return err
 
@@ -570,18 +570,18 @@ func (c *Controller) syncPacketSampling(psName string) error {
 // already, 0 is returned. If number of existing PacketCapture requests reaches
 // the upper limit, an error is returned.
 func (c *Controller) allocateTag(name string) (uint8, error) {
-	c.runningPacketSamplingsMutex.Lock()
-	defer c.runningPacketSamplingsMutex.Unlock()
+	c.runningPacketCapturesMutex.Lock()
+	defer c.runningPacketCapturesMutex.Unlock()
 
-	for _, state := range c.runningPacketSamplings {
+	for _, state := range c.runningPacketCaptures {
 		if state != nil && state.name == name {
-			// The packetsampling request has been processed already.
+			// The packetcapture request has been processed already.
 			return 0, nil
 		}
 	}
 	for i := minTagNum; i <= maxTagNum; i += 1 {
-		if _, ok := c.runningPacketSamplings[i]; !ok {
-			c.runningPacketSamplings[i] = &packetSamplingState{
+		if _, ok := c.runningPacketCaptures[i]; !ok {
+			c.runningPacketCaptures[i] = &packetCaptureState{
 				name: name,
 				tag:  i,
 			}
@@ -618,9 +618,9 @@ func (c *Controller) uploadPackets(ps *crdv1alpha1.PacketCapture, outputFile afe
 
 }
 
-// initPacketSampling mark the packetsampling as running and allocate tag for it, then start the sampling. the tag will
+// initPacketCapture mark the packetcapture as running and allocate tag for it, then start the capture. the tag will
 // serve as a unique id for concurrent processing.
-func (c *Controller) initPacketSampling(ps *crdv1alpha1.PacketCapture) error {
+func (c *Controller) initPacketCapture(ps *crdv1alpha1.PacketCapture) error {
 	tag, err := c.allocateTag(ps.Name)
 	if err != nil {
 		return err
@@ -628,19 +628,19 @@ func (c *Controller) initPacketSampling(ps *crdv1alpha1.PacketCapture) error {
 	if tag == 0 {
 		return nil
 	}
-	err = c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketCaptureRunning, "", 0)
+	err = c.updatePacketCaptureStatus(ps, crdv1alpha1.PacketCaptureRunning, "", 0)
 	if err != nil {
 		c.deallocateTag(ps.Name, tag)
 		return err
 	}
-	return c.startPacketSampling(ps, c.runningPacketSamplings[tag])
+	return c.startPacketCapture(ps, c.runningPacketCaptures[tag])
 }
 
-func (c *Controller) updatePacketSamplingStatus(ps *crdv1alpha1.PacketCapture, phase crdv1alpha1.PacketCapturePhase, reason string, numCapturedPackets int32) error {
-	type PacketSampling struct {
+func (c *Controller) updatePacketCaptureStatus(ps *crdv1alpha1.PacketCapture, phase crdv1alpha1.PacketCapturePhase, reason string, numCapturedPackets int32) error {
+	type PacketCapture struct {
 		Status crdv1alpha1.PacketCaptureStatus `json:"status,omitempty"`
 	}
-	patchData := PacketSampling{Status: crdv1alpha1.PacketCaptureStatus{Phase: phase}}
+	patchData := PacketCapture{Status: crdv1alpha1.PacketCaptureStatus{Phase: phase}}
 	if phase == crdv1alpha1.PacketCaptureRunning && ps.Status.StartTime == nil {
 		t := metav1.Now()
 		patchData.Status.StartTime = &t
@@ -655,51 +655,51 @@ func (c *Controller) updatePacketSamplingStatus(ps *crdv1alpha1.PacketCapture, p
 		patchData.Status.PacketsPath = c.generatePacketsPathForServer(string(ps.UID))
 	}
 	payloads, _ := json.Marshal(patchData)
-	_, err := c.crdClient.CrdV1alpha1().PacketSamplings().Patch(context.TODO(), ps.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
+	_, err := c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), ps.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
 	return err
 }
 
 func (c *Controller) deallocateTag(name string, tag uint8) {
-	c.runningPacketSamplingsMutex.Lock()
-	defer c.runningPacketSamplingsMutex.Unlock()
-	if state, ok := c.runningPacketSamplings[tag]; ok {
+	c.runningPacketCapturesMutex.Lock()
+	defer c.runningPacketCapturesMutex.Unlock()
+	if state, ok := c.runningPacketCaptures[tag]; ok {
 		if state != nil && name == state.name {
-			delete(c.runningPacketSamplings, tag)
+			delete(c.runningPacketCaptures, tag)
 		}
 	}
 }
 
-func (c *Controller) getTagForPacketSampling(name string) uint8 {
-	c.runningPacketSamplingsMutex.RLock()
-	defer c.runningPacketSamplingsMutex.RUnlock()
-	for tag, state := range c.runningPacketSamplings {
+func (c *Controller) getTagForPacketCapture(name string) uint8 {
+	c.runningPacketCapturesMutex.RLock()
+	defer c.runningPacketCapturesMutex.RUnlock()
+	for tag, state := range c.runningPacketCaptures {
 		if state != nil && state.name == name {
-			// The packetsampling request has been processed already.
+			// The packetcapture request has been processed already.
 			return tag
 		}
 	}
 	return 0
 }
 
-// checkPacketSamplingStatus is only called for PacketSamplings in the Running phase
-func (c *Controller) checkPacketSamplingStatus(ps *crdv1alpha1.PacketCapture) error {
-	tag := c.getTagForPacketSampling(ps.Name)
+// checkPacketCaptureStatus is only called for PacketCaptures in the Running phase
+func (c *Controller) checkPacketCaptureStatus(ps *crdv1alpha1.PacketCapture) error {
+	tag := c.getTagForPacketCapture(ps.Name)
 	if tag == 0 {
 		return nil
 	}
-	if checkPacketSamplingSucceeded(ps) {
+	if checkPacketCaptureSucceeded(ps) {
 		c.deallocateTag(ps.Name, tag)
-		return c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketCaptureSucceeded, "", 0)
+		return c.updatePacketCaptureStatus(ps, crdv1alpha1.PacketCaptureSucceeded, "", 0)
 	}
 
-	if isPacketSamplingTimeout(ps) {
+	if isPacketCaptureTimeout(ps) {
 		c.deallocateTag(ps.Name, tag)
-		return c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketCaptureFailed, samplingTimeoutReason, 0)
+		return c.updatePacketCaptureStatus(ps, crdv1alpha1.PacketCaptureFailed, captureTimeoutReason, 0)
 	}
 	return nil
 }
 
-func checkPacketSamplingSucceeded(ps *crdv1alpha1.PacketCapture) bool {
+func checkPacketCaptureSucceeded(ps *crdv1alpha1.PacketCapture) bool {
 	succeeded := false
 	if ps.Spec.Type == crdv1alpha1.FirstNCapture && ps.Status.NumCapturedPackets == ps.Spec.FirstNCaptureConfig.Number {
 		succeeded = true
@@ -707,7 +707,7 @@ func checkPacketSamplingSucceeded(ps *crdv1alpha1.PacketCapture) bool {
 	return succeeded
 }
 
-func isPacketSamplingTimeout(ps *crdv1alpha1.PacketCapture) bool {
+func isPacketCaptureTimeout(ps *crdv1alpha1.PacketCapture) bool {
 	var timeout time.Duration
 	if ps.Spec.Timeout != 0 {
 		timeout = time.Duration(ps.Spec.Timeout) * time.Second

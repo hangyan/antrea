@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package packetsampling
+package packetcapture
 
 import (
 	"context"
@@ -48,7 +48,7 @@ const (
 const (
 	testTag     = uint8(3)
 	testUID     = "1-2-3-4"
-	testSFTPUrl = "sftp://127.0.0.1:22/root/packetsamplings"
+	testSFTPUrl = "sftp://127.0.0.1:22/root/packetcaptures"
 )
 
 // generatePacketInMatchFromTag reverse the packetIn message/matcher -> REG4/tag value path
@@ -72,7 +72,7 @@ func generatePacketInMatchFromTag(tag uint8) *openflow15.MatchField {
 }
 
 func genMatchers() []openflow15.MatchField {
-	// m := generateMatch(openflow.PacketSamplingMark.GetRegID(), testTagData)
+	// m := generateMatch(openflow.PacketCaptureMark.GetRegID(), testTagData)
 	matchers := []openflow15.MatchField{*generatePacketInMatchFromTag(testTag)}
 	return matchers
 }
@@ -94,8 +94,8 @@ func getTestPacketBytes(dstIP string) []byte {
 	return pktBytes
 }
 
-func generateTestPsState(name string, pcapngFile afero.File, writer *pcapgo.NgWriter, num int32) *packetSamplingState {
-	return &packetSamplingState{
+func generateTestPsState(name string, pcapngFile afero.File, writer *pcapgo.NgWriter, num int32) *packetCaptureState {
+	return &packetCaptureState{
 		name:                  name,
 		maxNumCapturedPackets: maxNum,
 		numCapturedPackets:    num,
@@ -103,11 +103,11 @@ func generateTestPsState(name string, pcapngFile afero.File, writer *pcapgo.NgWr
 		pcapngWriter:          writer,
 		pcapngFile:            pcapngFile,
 		shouldSyncPackets:     true,
-		updateRateLimiter:     rate.NewLimiter(rate.Every(samplingStatusUpdatePeriod), 1),
+		updateRateLimiter:     rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1),
 	}
 }
 
-func generatePacketSampling(name string) *crdv1alpha1.PacketCapture {
+func generatePacketCapture(name string) *crdv1alpha1.PacketCapture {
 	return &crdv1alpha1.PacketCapture{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -164,14 +164,14 @@ func (uploader *testUploader) Upload(url string, fileName string, config *ssh.Cl
 	return nil
 }
 
-func TestHandlePacketSamplingPacketIn(t *testing.T) {
+func TestHandlePacketCapturePacketIn(t *testing.T) {
 
 	invalidPktBytes := getTestPacketBytes("89.207.132.170")
 	pktBytesPodToPod := getTestPacketBytes(pod2IPv4)
 
 	// create test os
 	defaultFS = afero.NewMemMapFs()
-	defaultFS.MkdirAll("/tmp/packetsampling/packets", 0755)
+	defaultFS.MkdirAll("/tmp/packetcapture/packets", 0755)
 	file, err := defaultFS.Create(uidToPath(testUID))
 	if err != nil {
 		t.Fatal("create pcapng file error: ", err)
@@ -186,7 +186,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 		name             string
 		networkConfig    *config.NetworkConfig
 		nodeConfig       *config.NodeConfig
-		psState          *packetSamplingState
+		psState          *packetCaptureState
 		pktIn            *ofctrl.PacketIn
 		expectedPS       *crdv1alpha1.PacketCapture
 		expectedErrStr   string
@@ -197,7 +197,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 		{
 			name:       "invalid packets",
 			psState:    generateTestPsState("ps-with-invalid-packet", nil, testWriter, 0),
-			expectedPS: generatePacketSampling("ps-with-invalid-packet"),
+			expectedPS: generatePacketCapture("ps-with-invalid-packet"),
 			pktIn: &ofctrl.PacketIn{
 				PacketIn: &openflow15.PacketIn{
 					Data: util.NewBuffer(invalidPktBytes),
@@ -208,7 +208,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 		{
 			name:        "not hitting target number",
 			psState:     generateTestPsState("ps-with-less-num", nil, testWriter, 1),
-			expectedPS:  generatePacketSampling("ps-with-less-num"),
+			expectedPS:  generatePacketCapture("ps-with-less-num"),
 			expectedNum: 2,
 			pktIn: &ofctrl.PacketIn{
 				PacketIn: &openflow15.PacketIn{
@@ -222,7 +222,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 		{
 			name:        "hit target number",
 			psState:     generateTestPsState("ps-with-max-num", file, testWriter, maxNum-1),
-			expectedPS:  generatePacketSampling("ps-with-max-num"),
+			expectedPS:  generatePacketCapture("ps-with-max-num"),
 			expectedNum: maxNum,
 			pktIn: &ofctrl.PacketIn{
 				PacketIn: &openflow15.PacketIn{
@@ -233,7 +233,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 				},
 			},
 			expectedCalls: func(mockOFClient *openflowtest.MockClient) {
-				mockOFClient.EXPECT().UninstallPacketSamplingFlows(testTag)
+				mockOFClient.EXPECT().UninstallPacketCaptureFlows(testTag)
 			},
 			expectedUploader: &testUploader{
 				fileName: testUID + ".pcapng",
@@ -244,7 +244,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			psc := newFakePacketSamplingController(t, nil, []runtime.Object{tt.expectedPS}, nil, &config.NodeConfig{Name: "node1"})
+			psc := newFakePacketCaptureController(t, nil, []runtime.Object{tt.expectedPS}, nil, &config.NodeConfig{Name: "node1"})
 			if tt.expectedCalls != nil {
 				tt.expectedCalls(psc.mockOFClient)
 			}
@@ -252,7 +252,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 			defer close(stopCh)
 			psc.crdInformerFactory.Start(stopCh)
 			psc.crdInformerFactory.WaitForCacheSync(stopCh)
-			psc.runningPacketSamplings[tt.psState.tag] = tt.psState
+			psc.runningPacketCaptures[tt.psState.tag] = tt.psState
 
 			psc.sftpUploader = tt.expectedUploader
 
@@ -260,7 +260,7 @@ func TestHandlePacketSamplingPacketIn(t *testing.T) {
 			if err == nil {
 				assert.Equal(t, tt.expectedErrStr, "")
 				// check target num in status
-				ps, err := psc.crdClient.CrdV1alpha1().PacketSamplings().Get(context.TODO(), tt.expectedPS.Name, metav1.GetOptions{})
+				ps, err := psc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), tt.expectedPS.Name, metav1.GetOptions{})
 				require.Nil(t, err)
 				assert.Equal(t, tt.expectedNum, ps.Status.NumCapturedPackets)
 			} else {

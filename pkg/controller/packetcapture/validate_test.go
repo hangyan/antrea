@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package packetsampling
+package packetcapture
 
 import (
 	"encoding/json"
@@ -44,7 +44,7 @@ func TestControllerValidate(t *testing.T) {
 			deniedReason: "PacketCapture ps has neither source nor destination Pod specified",
 		},
 		{
-			name: "Must assign sampling type",
+			name: "Must assign capture type",
 			newSpec: &crdv1alpha1.PacketCaptureSpec{
 				Source: crdv1alpha1.Source{
 					Namespace: "test-ns",
@@ -54,7 +54,7 @@ func TestControllerValidate(t *testing.T) {
 			deniedReason: "PacketCapture ps has invalid type , supported type is [FirstNCapture]",
 		},
 		{
-			name: "FistNSampling config not set",
+			name: "FistNCapture config not set",
 			newSpec: &crdv1alpha1.PacketCaptureSpec{
 				Source: crdv1alpha1.Source{
 					Namespace: "test-ns",

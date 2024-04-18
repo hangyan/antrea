@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package packetsampling
+package packetcapture
 
 import (
 	"fmt"
@@ -31,11 +31,11 @@ import (
 // Once the total number reaches the target, the PacketCapture will be marked as Succeed.
 func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 	klog.V(4).InfoS("PacketIn for PacketCapture", "PacketIn", pktIn.PacketIn)
-	samplingState, samplingFinished, err := c.parsePacketIn(pktIn)
+	captureState, captureFinished, err := c.parsePacketIn(pktIn)
 	if err != nil {
 		return fmt.Errorf("parsePacketIn error: %w", err)
 	}
-	if samplingFinished {
+	if captureFinished {
 		return nil
 	}
 	rawData := pktIn.Data.(*util.Buffer).Bytes()
@@ -44,51 +44,51 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 		CaptureLength: len(rawData),
 		Length:        len(rawData),
 	}
-	err = samplingState.pcapngWriter.WritePacket(ci, rawData)
+	err = captureState.pcapngWriter.WritePacket(ci, rawData)
 	if err != nil {
 		return fmt.Errorf("couldn't write packet: %w", err)
 	}
-	reachTarget := samplingState.numCapturedPackets == samplingState.maxNumCapturedPackets
+	reachTarget := captureState.numCapturedPackets == captureState.maxNumCapturedPackets
 	// use rate limiter to reduce the times we need to update status.
-	if reachTarget || samplingState.updateRateLimiter.Allow() {
-		ps, err := c.packetSamplingLister.Get(samplingState.name)
+	if reachTarget || captureState.updateRateLimiter.Allow() {
+		ps, err := c.packetCaptureLister.Get(captureState.name)
 		if err != nil {
 			return fmt.Errorf("get PacketCapture failed: %w", err)
 		}
 		// if reach the target. flush the file and upload it.
 		if reachTarget {
-			if err := samplingState.pcapngWriter.Flush(); err != nil {
+			if err := captureState.pcapngWriter.Flush(); err != nil {
 				return err
 			}
-			if err := c.uploadPackets(ps, samplingState.pcapngFile); err != nil {
+			if err := c.uploadPackets(ps, captureState.pcapngFile); err != nil {
 				return err
 			}
 		}
-		err = c.updatePacketSamplingStatus(ps, crdv1alpha1.PacketCaptureRunning, "", samplingState.numCapturedPackets)
+		err = c.updatePacketCaptureStatus(ps, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
 		if err != nil {
 			return fmt.Errorf("failed to update the PacketCapture: %w", err)
 		}
-		klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(ps), "numCapturedPackets", samplingState.numCapturedPackets)
+		klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(ps), "numCapturedPackets", captureState.numCapturedPackets)
 	}
 	return nil
 }
 
 // parsePacketIn parses the packet-in message. If the value in register match with existing PacketCapture's state(tag),
 // it will be counted. If the total count reach the target, the ovs flow will be uninstalled.
-func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingState, samplingFinished bool, _ error) {
+func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetCaptureState, captureFinished bool, _ error) {
 	var tag uint8
 	matchers := pktIn.GetMatches()
-	match := openflow.GetMatchFieldByRegID(matchers, openflow.PacketSamplingMark.GetRegID())
+	match := openflow.GetMatchFieldByRegID(matchers, openflow.PacketCaptureMark.GetRegID())
 	if match != nil {
-		value, err := openflow.GetInfoInReg(match, openflow.PacketSamplingMark.GetRange().ToNXRange())
+		value, err := openflow.GetInfoInReg(match, openflow.PacketCaptureMark.GetRange().ToNXRange())
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to get PacketCapture tag from packet-in message: %w", err)
 		}
 		tag = uint8(value)
 	}
-	c.runningPacketSamplingsMutex.Lock()
-	defer c.runningPacketSamplingsMutex.Unlock()
-	psState, exists := c.runningPacketSamplings[tag]
+	c.runningPacketCapturesMutex.Lock()
+	defer c.runningPacketCapturesMutex.Unlock()
+	psState, exists := c.runningPacketCaptures[tag]
 	if !exists {
 		return nil, false, fmt.Errorf("PacketCapture for dataplane tag %d not found in cache", tag)
 	}
@@ -97,7 +97,7 @@ func (c *Controller) parsePacketIn(pktIn *ofctrl.PacketIn) (_ *packetSamplingSta
 	}
 	psState.numCapturedPackets++
 	if psState.numCapturedPackets == psState.maxNumCapturedPackets {
-		err := c.ofClient.UninstallPacketSamplingFlows(tag)
+		err := c.ofClient.UninstallPacketCaptureFlows(tag)
 		if err != nil {
 			return nil, false, fmt.Errorf("uninstall PacketCapture ovs flow failed: %v", err)
 		}

@@ -234,14 +234,14 @@ type Client interface {
 	// InstallTraceflowFlows installs flows for a Traceflow request.
 	InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedOnly, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error
 
-	// InstallPacketSamplingFlows installs flows for a Packet Sampling request.
-	InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly bool, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error
+	// InstallPacketCaptureFlows installs flows for a PacketCapture request.
+	InstallPacketCaptureFlows(dataplaneTag uint8, senderOnly bool, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error
 
 	// UninstallTraceflowFlows uninstalls flows for a Traceflow request.
 	UninstallTraceflowFlows(dataplaneTag uint8) error
 
-	// UninstallPacketSamplingFlows uninstalls flows for a Packet Sampling request.
-	UninstallPacketSamplingFlows(dataplaneTag uint8) error
+	// UninstallPacketCaptureFlows uninstalls flows for a PacketCapture request.
+	UninstallPacketCaptureFlows(dataplaneTag uint8) error
 
 	// GetPolicyInfoFromConjunction returns the following policy information for the provided conjunction ID:
 	// NetworkPolicy reference, OF priority, rule name, label
@@ -934,7 +934,7 @@ func (c *client) generatePipelines() {
 			c.enableL7FlowExporter)
 		c.activatedFeatures = append(c.activatedFeatures, c.featurePodConnectivity)
 		c.traceableFeatures = append(c.traceableFeatures, c.featurePodConnectivity)
-		c.samplingFeatures = append(c.samplingFeatures, c.featurePodConnectivity)
+		c.packetCaptureFeatures = append(c.packetCaptureFeatures, c.featurePodConnectivity)
 
 		c.featureService = newFeatureService(c.cookieAllocator,
 			c.nodeIPChecker,
@@ -950,7 +950,7 @@ func (c *client) generatePipelines() {
 			c.connectUplinkToBridge)
 		c.activatedFeatures = append(c.activatedFeatures, c.featureService)
 		c.traceableFeatures = append(c.traceableFeatures, c.featureService)
-		c.samplingFeatures = append(c.samplingFeatures, c.featureService)
+		c.packetCaptureFeatures = append(c.packetCaptureFeatures, c.featureService)
 	}
 
 	if c.nodeType == config.ExternalNode {
@@ -998,9 +998,9 @@ func (c *client) generatePipelines() {
 	c.featureTraceflow = newFeatureTraceflow()
 	c.activatedFeatures = append(c.activatedFeatures, c.featureTraceflow)
 
-	if c.enablePacketSampling {
-		c.featurePacketSampling = newFeaturePacketSampling()
-		c.activatedFeatures = append(c.activatedFeatures, c.featurePacketSampling)
+	if c.enablePacketCapture {
+		c.featurePacketCapture = newFeaturePacketCapture()
+		c.activatedFeatures = append(c.activatedFeatures, c.featurePacketCapture)
 	}
 
 	// Pipelines to generate.
@@ -1247,11 +1247,11 @@ func (c *client) SendTraceflowPacket(dataplaneTag uint8, packet *binding.Packet,
 	return c.bridge.SendPacketOut(packetOutObj)
 }
 
-func (c *client) InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
+func (c *client) InstallPacketCaptureFlows(dataplaneTag uint8, senderOnly, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
 	var flows []binding.Flow
-	for _, f := range c.samplingFeatures {
-		flows = append(flows, f.flowsToSampling(dataplaneTag,
+	for _, f := range c.packetCaptureFeatures {
+		flows = append(flows, f.flowsToCapture(dataplaneTag,
 			c.ovsMetersAreSupported,
 			senderOnly,
 			receiverOnly,
@@ -1260,7 +1260,7 @@ func (c *client) InstallPacketSamplingFlows(dataplaneTag uint8, senderOnly, rece
 			ofPort,
 			timeoutSeconds)...)
 	}
-	return c.addFlows(c.featurePacketSampling.cachedFlows, cacheKey, flows)
+	return c.addFlows(c.featurePacketCapture.cachedFlows, cacheKey, flows)
 }
 
 func (c *client) InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedOnly, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
@@ -1284,9 +1284,9 @@ func (c *client) UninstallTraceflowFlows(dataplaneTag uint8) error {
 	return c.deleteFlows(c.featureTraceflow.cachedFlows, cacheKey)
 }
 
-func (c *client) UninstallPacketSamplingFlows(dataplaneTag uint8) error {
+func (c *client) UninstallPacketCaptureFlows(dataplaneTag uint8) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
-	return c.deleteFlows(c.featurePacketSampling.cachedFlows, cacheKey)
+	return c.deleteFlows(c.featurePacketCapture.cachedFlows, cacheKey)
 }
 
 // setBasePacketOutBuilder sets base IP properties of a packetOutBuilder which can have more packet data added.

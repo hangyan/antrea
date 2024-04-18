@@ -4314,7 +4314,7 @@ spec:
       - anp
 
 ---
-# Source: crds/packetsampling.yaml
+# Source: crds/packetcapture.yaml
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -4484,7 +4484,7 @@ spec:
   scope: Cluster
   names:
     plural: packetsamplings
-    singular: packetsampling
+    singular: packetcapture
     kind: PacketSampling
     shortNames:
       - ps
@@ -7635,12 +7635,12 @@ webhooks:
       service:
         name: "antrea"
         namespace: kube-system
-        path: "/validate/packetsampling"
+        path: "/validate/packetcapture"
     rules:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: ["crd.antrea.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["packetsampling"]
+        resources: ["packetcapture"]
         scope: "Cluster"
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None

@@ -309,7 +309,7 @@ func (f *featureTraceflow) getRequiredTables() []*Table {
 	return nil
 }
 
-func (f *featurePacketSampling) getRequiredTables() []*Table {
+func (f *featurePacketCapture) getRequiredTables() []*Table {
 	return nil
 }
 
@@ -341,8 +341,8 @@ type traceableFeature interface {
 		timeoutSeconds uint16) []binding.Flow
 }
 
-type samplingFeature interface {
-	flowsToSampling(dataplaneTag uint8,
+type packetCaptureFeature interface {
+	flowsToCapture(dataplaneTag uint8,
 		ovsMetersAreSupported,
 		senderOnly bool,
 		receiverOnly bool,

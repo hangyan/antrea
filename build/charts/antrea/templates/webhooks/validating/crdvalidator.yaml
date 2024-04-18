@@ -184,17 +184,17 @@ webhooks:
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None
     timeoutSeconds: 5
-  - name: "packetsamplingvalidator.antrea.io"
+  - name: "packetcapturevalidator.antrea.io"
     clientConfig:
       service:
         name: "antrea"
         namespace: {{ .Release.Namespace }}
-        path: "/validate/packetsampling"
+        path: "/validate/packetcapture"
     rules:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: ["crd.antrea.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["packetsampling"]
+        resources: ["packetcapture"]
         scope: "Cluster"
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None

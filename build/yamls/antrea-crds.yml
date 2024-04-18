@@ -4461,7 +4461,7 @@ spec:
   scope: Cluster
   names:
     plural: packetsamplings
-    singular: packetsampling
+    singular: packetcapture
     kind: PacketSampling
     shortNames:
       - ps
