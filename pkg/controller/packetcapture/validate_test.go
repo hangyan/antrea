@@ -20,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	admv1 "k8s.io/api/admission/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -168,6 +169,77 @@ func TestControllerValidate(t *testing.T) {
 			deniedReason: "invalid file server address: not sftp protocol",
 		},
 		{
+			name: "invalid auth type",
+			newSpec: &crdv1alpha1.PacketCaptureSpec{
+				Source: crdv1alpha1.Source{
+					Namespace: "test-ns",
+					Pod:       "test-pod",
+				},
+				Type: crdv1alpha1.FirstNCapture,
+				FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					Number: 4,
+				},
+				FileServer: crdv1alpha1.BundleFileServer{
+					URL: "sftp://127.0.0.1:22/root/packets",
+				},
+				Authentication: crdv1alpha1.BundleServerAuthConfiguration{
+					AuthType: "invalid",
+					AuthSecret: &v1.SecretReference{
+						Namespace: fileServerAuthSecretNS,
+						Name:      fileServerAuthSecretName,
+					},
+				},
+			},
+			allowed:      false,
+			deniedReason: "unsupported file server auth type, supported type are: [BasicAuthentication]",
+		},
+		{
+			name: "fileserver auth unset",
+			newSpec: &crdv1alpha1.PacketCaptureSpec{
+				Source: crdv1alpha1.Source{
+					Namespace: "test-ns",
+					Pod:       "test-pod",
+				},
+				Type: crdv1alpha1.FirstNCapture,
+				FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					Number: 4,
+				},
+				FileServer: crdv1alpha1.BundleFileServer{
+					URL: "sftp://127.0.0.1:22/root/packets",
+				},
+				Authentication: crdv1alpha1.BundleServerAuthConfiguration{
+					AuthType: crdv1alpha1.BasicAuthentication,
+				},
+			},
+			allowed:      false,
+			deniedReason: "file server auth secret unset",
+		},
+		{
+			name: "fileserver auth secretRef incorrect",
+			newSpec: &crdv1alpha1.PacketCaptureSpec{
+				Source: crdv1alpha1.Source{
+					Namespace: "test-ns",
+					Pod:       "test-pod",
+				},
+				Type: crdv1alpha1.FirstNCapture,
+				FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					Number: 4,
+				},
+				FileServer: crdv1alpha1.BundleFileServer{
+					URL: "sftp://127.0.0.1:22/root/packets",
+				},
+				Authentication: crdv1alpha1.BundleServerAuthConfiguration{
+					AuthType: crdv1alpha1.BasicAuthentication,
+					AuthSecret: &v1.SecretReference{
+						Namespace: "default",
+						Name:      "invalid",
+					},
+				},
+			},
+			allowed:      false,
+			deniedReason: "file server auth secret should be located at kube-system/antrea-packetcapture-fileserver-auth",
+		},
+		{
 			name: "Valid request",
 			newSpec: &crdv1alpha1.PacketCaptureSpec{
 				Source: crdv1alpha1.Source{
@@ -179,7 +251,14 @@ func TestControllerValidate(t *testing.T) {
 					Number: 4,
 				},
 				FileServer: crdv1alpha1.BundleFileServer{
-					URL: "sftp://127.0.0.1:22/root/supportbundle",
+					URL: "sftp://127.0.0.1:22/root/packets",
+				},
+				Authentication: crdv1alpha1.BundleServerAuthConfiguration{
+					AuthType: crdv1alpha1.BasicAuthentication,
+					AuthSecret: &v1.SecretReference{
+						Namespace: fileServerAuthSecretNS,
+						Name:      fileServerAuthSecretName,
+					},
 				},
 			},
 			allowed: true,

@@ -33,17 +33,18 @@ import (
 )
 
 var (
-	psNamespace      = "default"
-	psSecretName     = "ps-secret"
+	pcSecretNamespace = "kube-system"
+	// #nosec G101
+	pcSecretName     = "antrea-packetcapture-fileserver-auth"
 	tcpServerPodName = "tcp-server"
-	psToolboxPodName = "toolbox"
+	pcToolboxPodName = "toolbox"
 	udpServerPodName = "udp-server"
 	nonExistPodName  = "non-existing-pod"
 	dstServiceName   = "svc"
 	dstServiceIP     = ""
 )
 
-type psTestCase struct {
+type pcTestCase struct {
 	name           string
 	ps             *crdv1alpha1.PacketCapture
 	expectedPhase  crdv1alpha1.PacketCapturePhase
@@ -112,16 +113,17 @@ func TestPacketCapture(t *testing.T) {
 
 	sec := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: psSecretName,
+			Name:      pcSecretName,
+			Namespace: pcSecretNamespace,
 		},
 		Data: map[string][]byte{
 			"username": []byte(secretUserName),
 			"password": []byte(secretPassword),
 		},
 	}
-	_, err = data.clientset.CoreV1().Secrets(psNamespace).Create(context.TODO(), sec, metav1.CreateOptions{})
+	_, err = data.clientset.CoreV1().Secrets(pcSecretNamespace).Create(context.TODO(), sec, metav1.CreateOptions{})
 	require.NoError(t, err)
-	defer data.clientset.CoreV1().Secrets(psNamespace).Delete(context.TODO(), psSecretName, metav1.DeleteOptions{})
+	defer data.clientset.CoreV1().Secrets(pcSecretNamespace).Delete(context.TODO(), pcSecretName, metav1.DeleteOptions{})
 
 	t.Run("testPacketCaptureBasic", func(t *testing.T) {
 		testPacketCaptureBasic(t, data)
@@ -140,7 +142,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 
 	err := data.createServerPodWithLabels(tcpServerPodName, data.testNamespace, serverPodPort, nil)
 	require.NoError(t, err)
-	err = data.createToolboxPodOnNode(psToolboxPodName, data.testNamespace, node1, false)
+	err = data.createToolboxPodOnNode(pcToolboxPodName, data.testNamespace, node1, false)
 	require.NoError(t, err)
 
 	svc, cleanup := data.createAgnhostServiceAndBackendPods(t, dstServiceName, data.testNamespace, node1, v1.ServiceTypeClusterIP)
@@ -150,26 +152,26 @@ func testPacketCapture(t *testing.T, data *TestData) {
 
 	podIPs := waitForPodIPs(t, data, []PodInfo{
 		{tcpServerPodName, getOSString(), "", data.testNamespace},
-		{psToolboxPodName, getOSString(), "", data.testNamespace},
+		{pcToolboxPodName, getOSString(), "", data.testNamespace},
 	})
 
 	// Give a little time for Windows containerd Nodes to setup OVS.
 	// Containerd configures port asynchronously, which could cause execution time of installing flow longer than docker.
 	time.Sleep(time.Second * 1)
 
-	testcases := []psTestCase{
+	testcases := []pcTestCase{
 		{
 			name:      "to-ipv4-ip",
 			ipVersion: 4,
-			srcPod:    psToolboxPodName,
+			srcPod:    pcToolboxPodName,
 			ps: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, psToolboxPodName, data.testNamespace, tcpServerPodName)),
+					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, pcToolboxPodName, data.testNamespace, tcpServerPodName)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
 						Namespace: data.testNamespace,
-						Pod:       psToolboxPodName,
+						Pod:       pcToolboxPodName,
 					},
 					Destination: crdv1alpha1.Destination{
 						IP: podIPs[tcpServerPodName].IPv4.String(),
@@ -184,8 +186,8 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
 						AuthType: "BasicAuthentication",
 						AuthSecret: &v1.SecretReference{
-							Name:      psSecretName,
-							Namespace: psNamespace,
+							Name:      pcSecretName,
+							Namespace: pcSecretNamespace,
 						},
 					},
 					Packet: crdv1alpha1.Packet{
@@ -207,15 +209,15 @@ func testPacketCapture(t *testing.T, data *TestData) {
 		{
 			name:      "to-svc",
 			ipVersion: 4,
-			srcPod:    psToolboxPodName,
+			srcPod:    pcToolboxPodName,
 			ps: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, psToolboxPodName, data.testNamespace, tcpServerPodName)),
+					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, pcToolboxPodName, data.testNamespace, tcpServerPodName)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
 						Namespace: data.testNamespace,
-						Pod:       psToolboxPodName,
+						Pod:       pcToolboxPodName,
 					},
 					Destination: crdv1alpha1.Destination{
 						Service:   dstServiceName,
@@ -231,8 +233,8 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
 						AuthType: "BasicAuthentication",
 						AuthSecret: &v1.SecretReference{
-							Name:      psSecretName,
-							Namespace: psNamespace,
+							Name:      pcSecretName,
+							Namespace: pcSecretNamespace,
 						},
 					},
 					Packet: crdv1alpha1.Packet{
@@ -281,27 +283,27 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 	err = data.createServerPodWithLabels(tcpServerPodName, data.testNamespace, serverPodPort, nil)
 	defer data.DeletePodAndWait(defaultTimeout, tcpServerPodName, data.testNamespace)
 	require.NoError(t, err)
-	err = data.createToolboxPodOnNode(psToolboxPodName, data.testNamespace, node1, false)
-	defer data.DeletePodAndWait(defaultTimeout, psToolboxPodName, data.testNamespace)
+	err = data.createToolboxPodOnNode(pcToolboxPodName, data.testNamespace, node1, false)
+	defer data.DeletePodAndWait(defaultTimeout, pcToolboxPodName, data.testNamespace)
 	require.NoError(t, err)
 
 	// Give a little time for Windows containerd Nodes to setup OVS.
 	// Containerd configures port asynchronously, which could cause execution time of installing flow longer than docker.
 	time.Sleep(time.Second * 1)
 
-	testcases := []psTestCase{
+	testcases := []pcTestCase{
 		{
 			name:      "ipv4-tcp",
 			ipVersion: 4,
-			srcPod:    psToolboxPodName,
+			srcPod:    pcToolboxPodName,
 			ps: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, psToolboxPodName, data.testNamespace, tcpServerPodName)),
+					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, pcToolboxPodName, data.testNamespace, tcpServerPodName)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
 						Namespace: data.testNamespace,
-						Pod:       psToolboxPodName,
+						Pod:       pcToolboxPodName,
 					},
 					Destination: crdv1alpha1.Destination{
 						Namespace: data.testNamespace,
@@ -317,8 +319,8 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
 						AuthType: "BasicAuthentication",
 						AuthSecret: &v1.SecretReference{
-							Name:      psSecretName,
-							Namespace: psNamespace,
+							Name:      pcSecretName,
+							Namespace: pcSecretNamespace,
 						},
 					},
 					Packet: crdv1alpha1.Packet{
@@ -339,15 +341,15 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 		{
 			name:      "ipv4-udp",
 			ipVersion: 4,
-			srcPod:    psToolboxPodName,
+			srcPod:    pcToolboxPodName,
 			ps: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, psToolboxPodName, data.testNamespace, udpServerPodName)),
+					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, pcToolboxPodName, data.testNamespace, udpServerPodName)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
 						Namespace: data.testNamespace,
-						Pod:       psToolboxPodName,
+						Pod:       pcToolboxPodName,
 					},
 					Destination: crdv1alpha1.Destination{
 						Namespace: data.testNamespace,
@@ -365,8 +367,8 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
 						AuthType: "BasicAuthentication",
 						AuthSecret: &v1.SecretReference{
-							Name:      psSecretName,
-							Namespace: psNamespace,
+							Name:      pcSecretName,
+							Namespace: pcSecretNamespace,
 						},
 					},
 					Packet: crdv1alpha1.Packet{
@@ -412,8 +414,8 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
 						AuthType: "BasicAuthentication",
 						AuthSecret: &v1.SecretReference{
-							Name:      psSecretName,
-							Namespace: psNamespace,
+							Name:      pcSecretName,
+							Namespace: pcSecretNamespace,
 						},
 					},
 					Packet: crdv1alpha1.Packet{
@@ -454,8 +456,8 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
 						AuthType: "BasicAuthentication",
 						AuthSecret: &v1.SecretReference{
-							Name:      psSecretName,
-							Namespace: psNamespace,
+							Name:      pcSecretName,
+							Namespace: pcSecretNamespace,
 						},
 					},
 					Packet: crdv1alpha1.Packet{
@@ -496,8 +498,8 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					Authentication: crdv1alpha1.BundleServerAuthConfiguration{
 						AuthType: "BasicAuthentication",
 						AuthSecret: &v1.SecretReference{
-							Name:      psSecretName,
-							Namespace: psNamespace,
+							Name:      pcSecretName,
+							Namespace: pcSecretNamespace,
 						},
 					},
 				},
@@ -525,7 +527,7 @@ func getOSString() string {
 	}
 }
 
-func runPacketCaptureTest(t *testing.T, data *TestData, tc psTestCase) {
+func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 	switch tc.ipVersion {
 	case 4:
 		skipIfNotIPv4Cluster(t)
@@ -537,7 +539,7 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc psTestCase) {
 	}
 
 	// wait for toolbox
-	waitForPodIPs(t, data, []PodInfo{{psToolboxPodName, getOSString(), "", data.testNamespace}})
+	waitForPodIPs(t, data, []PodInfo{{pcToolboxPodName, getOSString(), "", data.testNamespace}})
 
 	dstPodName := tc.ps.Spec.Destination.Pod
 	var dstPodIPs *PodIPs

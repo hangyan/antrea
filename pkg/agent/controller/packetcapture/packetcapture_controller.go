@@ -652,7 +652,7 @@ func (c *Controller) updatePacketCaptureStatus(ps *crdv1alpha1.PacketCapture, ph
 		patchData.Status.NumCapturedPackets = numCapturedPackets
 	}
 	if phase == crdv1alpha1.PacketCaptureSucceeded {
-		patchData.Status.PacketsPath = c.generatePacketsPathForServer(string(ps.UID))
+		patchData.Status.PacketsFileName = c.generatePacketsPathForServer(string(ps.UID))
 	}
 	payloads, _ := json.Marshal(patchData)
 	_, err := c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), ps.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")

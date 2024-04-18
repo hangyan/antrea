@@ -27,6 +27,12 @@ import (
 	"antrea.io/antrea/pkg/util/ftp"
 )
 
+const (
+	fileServerAuthSecretNS = "kube-system"
+	// #nosec G101
+	fileServerAuthSecretName = "antrea-packetcapture-fileserver-auth"
+)
+
 func Validate(review *admv1.AdmissionReview) *admv1.AdmissionResponse {
 	newResponse := func(allowed bool, deniedReason string) *admv1.AdmissionResponse {
 		resp := &admv1.AdmissionResponse{
@@ -67,22 +73,22 @@ func Validate(review *admv1.AdmissionReview) *admv1.AdmissionResponse {
 	}
 }
 
-func validate(ps *crdv1alpha1.PacketCapture) (allowed bool, deniedReason string) {
-	if ps.Spec.Source.Pod == "" && ps.Spec.Destination.Pod == "" {
-		return false, fmt.Sprintf("PacketCapture %s has neither source nor destination Pod specified", ps.Name)
+func validate(pc *crdv1alpha1.PacketCapture) (allowed bool, deniedReason string) {
+	if pc.Spec.Source.Pod == "" && pc.Spec.Destination.Pod == "" {
+		return false, fmt.Sprintf("PacketCapture %s has neither source nor destination Pod specified", pc.Name)
 	}
 
-	if ps.Spec.Type != crdv1alpha1.FirstNCapture {
-		return false, fmt.Sprintf("PacketCapture %s has invalid type %s, supported type is [%s]", ps.Name, ps.Spec.Type, crdv1alpha1.FirstNCapture)
+	if pc.Spec.Type != crdv1alpha1.FirstNCapture {
+		return false, fmt.Sprintf("PacketCapture %s has invalid type %s, supported type is [%s]", pc.Name, pc.Spec.Type, crdv1alpha1.FirstNCapture)
 	}
 
-	if ps.Spec.FirstNCaptureConfig == nil {
-		return false, fmt.Sprintf("PacketCapture %s has no FirstNCaptureConfig", ps.Name)
+	if pc.Spec.FirstNCaptureConfig == nil {
+		return false, fmt.Sprintf("PacketCapture %s has no FirstNCaptureConfig", pc.Name)
 	}
 
-	isIPv6 := ps.Spec.Packet.IPv6Header != nil
-	if ps.Spec.Source.IP != "" {
-		sourceIP := net.ParseIP(ps.Spec.Source.IP)
+	isIPv6 := pc.Spec.Packet.IPv6Header != nil
+	if pc.Spec.Source.IP != "" {
+		sourceIP := net.ParseIP(pc.Spec.Source.IP)
 		if sourceIP == nil {
 			return false, "source IP is not valid"
 		}
@@ -91,8 +97,8 @@ func validate(ps *crdv1alpha1.PacketCapture) (allowed bool, deniedReason string)
 		}
 	}
 
-	if ps.Spec.Destination.IP != "" {
-		destIP := net.ParseIP(ps.Spec.Destination.IP)
+	if pc.Spec.Destination.IP != "" {
+		destIP := net.ParseIP(pc.Spec.Destination.IP)
 		if destIP == nil {
 			return false, "destination IP is not valid"
 		}
@@ -101,8 +107,21 @@ func validate(ps *crdv1alpha1.PacketCapture) (allowed bool, deniedReason string)
 		}
 	}
 
-	if _, err := ftp.ParseFTPUploadUrl(ps.Spec.FileServer.URL); err != nil {
+	if _, err := ftp.ParseFTPUploadUrl(pc.Spec.FileServer.URL); err != nil {
 		return false, fmt.Sprintf("invalid file server address: %s", err.Error())
+	}
+
+	// check auth config
+	secretRef := pc.Spec.Authentication.AuthSecret
+	if pc.Spec.Authentication.AuthType != crdv1alpha1.BasicAuthentication {
+		return false, fmt.Sprintf("unsupported file server auth type, supported type are: [%s]", crdv1alpha1.BasicAuthentication)
+	}
+	if secretRef == nil {
+		return false, fmt.Sprintf("file server auth secret unset")
+	}
+	if secretRef.Namespace != fileServerAuthSecretNS || secretRef.Name != fileServerAuthSecretName {
+		return false, fmt.Sprintf("file server auth secret should be located at %s/%s",
+			fileServerAuthSecretNS, fileServerAuthSecretName)
 	}
 	return true, ""
 }

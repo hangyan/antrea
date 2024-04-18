@@ -999,8 +999,8 @@ type PacketCaptureStatus struct {
 	// NumCapturedPackets record how many packets has been captured. If it reach the target number, the capture
 	// can be considered as finished.
 	NumCapturedPackets int32 `json:"numCapturedPackets,omitempty"`
-	// PacketsPath is the path where the captured packets are temporarily stored in the container. It will be
+	// PacketsFileName is the file name where the captured packets are temporarily stored in the container. It will be
 	// removed after the PacketCapture is deleted.
-	PacketsPath string       `json:"packetsPath,omitempty"`
-	StartTime   *metav1.Time `json:"startTime,omitempty"`
+	PacketsFileName string       `json:"packetsFileName,omitempty"`
+	StartTime       *metav1.Time `json:"startTime,omitempty"`
 }

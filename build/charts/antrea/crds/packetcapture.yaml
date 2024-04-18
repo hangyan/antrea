@@ -159,7 +159,7 @@ spec:
                   type: string
                 numCapturedPackets:
                   type: integer
-                packetsPath:
+                packetsFileName:
                   type: string
 
       subresources:

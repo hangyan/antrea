@@ -37,6 +37,8 @@ rules:
       - ""
     resources:
       - secrets
+    resourceNames:
+      - antrea-packetcapture-fileserver-auth
     verbs:
       - get
   - apiGroups:
