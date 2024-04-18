@@ -935,3 +935,72 @@ type TLSProtocol struct {
 	// SNI (Server Name Indication) indicates the server domain name in the TLS/SSL hello message.
 	SNI string `json:"sni,omitempty"`
 }
+
+type PacketCaptureType string
+
+const (
+	FirstNCapture PacketCaptureType = "FirstNCapture"
+)
+
+type FirstNCaptureConfig struct {
+	Number int32 `json:"number,omitempty"`
+}
+
+const DefaultPacketCaptureTimeout uint16 = 60
+
+type PacketCapturePhase string
+
+const (
+	PacketCaptureRunning   PacketCapturePhase = "Running"
+	PacketCaptureSucceeded PacketCapturePhase = "Succeeded"
+	PacketCaptureFailed    PacketCapturePhase = "Failed"
+)
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type PacketCaptureList struct {
+	metav1.TypeMeta `json:",inline"`
+	// +optional
+	metav1.ListMeta `json:"metadata,omitempty"`
+
+	Items []PacketCapture `json:"items"`
+}
+
+// +genclient
+// +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type PacketCapture struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              PacketCaptureSpec   `json:"spec,omitempty"`
+	Status            PacketCaptureStatus `json:"status,omitempty"`
+}
+
+type PacketCaptureSpec struct {
+	Timeout uint16 `json:"timeout,omitempty"`
+	// Type is the capture type. Currently only FirstN is supported.
+	Type PacketCaptureType `json:"type,omitempty"`
+	// FirstNCaptureConfig contains the config for the FirstN type capture. The only supported parameter is
+	// `Number` at the moment, means capture the first specified number of  packet in a flow.
+	FirstNCaptureConfig *FirstNCaptureConfig `json:"firstNCaptureConfig,omitempty"`
+	Source              Source               `json:"source,omitempty"`
+	Destination         Destination          `json:"destination,omitempty"`
+	Packet              Packet               `json:"packet,omitempty"`
+	// FileServer the sftp url config for the fileServer. Captured packets will be uploaded to this server.
+	FileServer     BundleFileServer              `json:"fileServer,omitempty"`
+	Authentication BundleServerAuthConfiguration `json:"authentication,omitempty"`
+}
+
+type PacketCaptureStatus struct {
+	Phase PacketCapturePhase `json:"phase,omitempty"`
+	// Reason recorded the failed reason when the capture failed.
+	Reason string `json:"reason,omitempty"`
+	// NumCapturedPackets record how many packets has been captured. If it reach the target number, the capture
+	// can be considered as finished.
+	NumCapturedPackets int32 `json:"numCapturedPackets,omitempty"`
+	// PacketsPath is the path where the captured packets are temporarily stored in the container. It will be
+	// removed after the PacketCapture is deleted.
+	PacketsPath string       `json:"packetsPath,omitempty"`
+	StartTime   *metav1.Time `json:"startTime,omitempty"`
+}

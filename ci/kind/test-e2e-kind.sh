@@ -55,6 +55,7 @@ THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 TESTBED_CMD="$THIS_DIR/kind-setup.sh"
 YML_CMD="$THIS_DIR/../../hack/generate-manifest.sh"
 FLOWAGGREGATOR_YML_CMD="$THIS_DIR/../../hack/generate-manifest-flow-aggregator.sh"
+SFTP_DEPLOYMENT_YML="$THIS_DIR/../../hack/externalnode/sftp-deployment.yml"
 FLOW_VISIBILITY_HELM_VALUES="$THIS_DIR/values-flow-exporter.yml"
 CH_OPERATOR_YML="$THIS_DIR/../../build/yamls/clickhouse-operator-install-bundle.yml"
 FLOW_VISIBILITY_CHART="$THIS_DIR/../../test/e2e/charts/flow-visibility"
@@ -320,10 +321,15 @@ function run_test {
   coverage_args=""
   flow_visibility_args=""
 
+
+  # used for PacketCapture tests.
+  cat "$SFTP_DEPLOYMENT_YML" | docker exec -i kind-control-plane dd of=/root/sftp-deployment.yml
+
   if $use_non_default_images; then
     export AGENT_IMG_NAME=${antrea_agent_image}
     export CONTROLLER_IMG_NAME=${antrea_controller_image}
   fi
+
   if $coverage; then
       $YML_CMD --encap-mode $current_mode $manifest_args | docker exec -i kind-control-plane dd of=/root/antrea-coverage.yml
       $YML_CMD --ipsec $manifest_args | docker exec -i kind-control-plane dd of=/root/antrea-ipsec-coverage.yml
