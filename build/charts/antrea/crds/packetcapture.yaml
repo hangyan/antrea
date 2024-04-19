@@ -130,7 +130,7 @@ spec:
                   maximum: 300
                 type:
                   type: string
-                  enum: [FirstNCapture]
+                  enum: [FirstN]
                 firstNCaptureConfig:
                   type: object
                   properties:

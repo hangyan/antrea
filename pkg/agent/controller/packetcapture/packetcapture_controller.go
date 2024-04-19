@@ -726,7 +726,7 @@ func (c *Controller) checkPacketCaptureStatus(pc *crdv1alpha1.PacketCapture) err
 
 func checkPacketCaptureSucceeded(pc *crdv1alpha1.PacketCapture) bool {
 	succeeded := false
-	if pc.Spec.Type == crdv1alpha1.FirstNCapture && pc.Status.NumCapturedPackets == pc.Spec.FirstNCaptureConfig.Number {
+	if pc.Spec.Type == crdv1alpha1.PacketCaptureFirstN && pc.Status.NumCapturedPackets == pc.Spec.FirstNCaptureConfig.Number {
 		succeeded = true
 	}
 	return succeeded
