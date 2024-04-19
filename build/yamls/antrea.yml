@@ -4357,6 +4357,11 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - fileServer
+                - firstNCaptureConfig
+                - source
+                - destination
               properties:
                 source:
                   type: object
@@ -4436,29 +4441,19 @@ spec:
                   maximum: 300
                 type:
                   type: string
+                  enum: [FirstN]
                 firstNCaptureConfig:
                   type: object
                   properties:
                     number:
                       type: integer
+                      format: int32
                 fileServer:
                   type: object
                   properties:
                     url:
                       type: string
-                authentication:
-                  type: object
-                  properties:
-                    authType:
-                      type: string
-                      enum: [ "BearerToken", "APIKey", "BasicAuthentication" ]
-                    authSecret:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        namespace:
-                          type: string
+                      pattern: 's{0,1}ftps{0,1}:\/\/[\w-_./]+:\d+'
             status:
               type: object
               properties:
@@ -5590,10 +5585,10 @@ data:
     # be enabled, otherwise this flag will not take effect.
     #  CleanupStaleUDPSvcConntrack: false
 
-    # Enable traceflow which provides packet tracing feature to diagnose network issue.
+    # Enable Traceflow which provides packet tracing feature to diagnose network issue.
     #  Traceflow: true
 
-    # Enable PacketCapture feature which provides packets capture feature to diagnose network issue.
+    # Enable PacketCapture feature which supports capturing packets to diagnose network issues.
     #  PacketCapture: false
 
     # Enable NodePortLocal feature to make the Pods reachable externally through NodePort
@@ -6979,7 +6974,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 0de0cbab41f8f35625b809caa98c7acfc28bc94d9f297830c807f477fb63882c
+        checksum/config: b4d663881328ba3c41e465730b7e1fd7c74b4886bc15cc0958b4238345137602
       labels:
         app: antrea
         component: antrea-agent
@@ -7215,7 +7210,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 0de0cbab41f8f35625b809caa98c7acfc28bc94d9f297830c807f477fb63882c
+        checksum/config: b4d663881328ba3c41e465730b7e1fd7c74b4886bc15cc0958b4238345137602
       labels:
         app: antrea
         component: antrea-controller
@@ -7595,21 +7590,6 @@ webhooks:
         apiGroups: ["crd.antrea.io"]
         apiVersions: ["v1alpha1"]
         resources: ["traceflows"]
-        scope: "Cluster"
-    admissionReviewVersions: ["v1", "v1beta1"]
-    sideEffects: None
-    timeoutSeconds: 5
-  - name: "packetcapturevalidator.antrea.io"
-    clientConfig:
-      service:
-        name: "antrea"
-        namespace: kube-system
-        path: "/validate/packetcapture"
-    rules:
-      - operations: ["CREATE", "UPDATE"]
-        apiGroups: ["crd.antrea.io"]
-        apiVersions: ["v1alpha1"]
-        resources: ["packetcaptures"]
         scope: "Cluster"
     admissionReviewVersions: ["v1", "v1beta1"]
     sideEffects: None

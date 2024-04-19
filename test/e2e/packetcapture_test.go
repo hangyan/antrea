@@ -113,14 +113,11 @@ func genSFTPDeployment() *appsv1.Deployment {
 }
 
 func createUDPServerPod(name string, ns string, portNum int32, serverNode string) error {
-	args := []string{
-		fmt.Sprintf("serve-hostname --udp --http=false --port %v", portNum),
-	}
 	port := v1.ContainerPort{Name: fmt.Sprintf("port-%d", portNum), ContainerPort: portNum}
 	return NewPodBuilder(name, ns, agnhostImage).
 		OnNode(serverNode).
 		WithContainerName("agnhost").
-		WithArgs(args).
+		WithArgs([]string{"serve-hostname", "--udp", "--http=false", "--port", fmt.Sprint(portNum)}).
 		WithPorts([]v1.ContainerPort{port}).
 		Create(testData)
 }

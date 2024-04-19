@@ -4334,6 +4334,11 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - fileServer
+                - firstNCaptureConfig
+                - source
+                - destination
               properties:
                 source:
                   type: object
@@ -4413,29 +4418,19 @@ spec:
                   maximum: 300
                 type:
                   type: string
+                  enum: [FirstN]
                 firstNCaptureConfig:
                   type: object
                   properties:
                     number:
                       type: integer
+                      format: int32
                 fileServer:
                   type: object
                   properties:
                     url:
                       type: string
-                authentication:
-                  type: object
-                  properties:
-                    authType:
-                      type: string
-                      enum: [ "BearerToken", "APIKey", "BasicAuthentication" ]
-                    authSecret:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        namespace:
-                          type: string
+                      pattern: 's{0,1}ftps{0,1}:\/\/[\w-_./]+:\d+'
             status:
               type: object
               properties:
