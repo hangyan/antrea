@@ -380,7 +380,7 @@ type Packet struct {
 type PacketCaptureType string
 
 const (
-	FirstNCapture PacketCaptureType = "FirstNCapture"
+	PacketCaptureFirstN PacketCaptureType = "FirstN"
 )
 
 type PacketCaptureFirstNConfig struct {
@@ -434,9 +434,9 @@ type PacketCaptureSpec struct {
 
 type PacketCaptureStatus struct {
 	Phase PacketCapturePhase `json:"phase,omitempty"`
-	// Reason recorded the failed reason when the capture failed.
+	// Reason records the failure reason when the capture fails.
 	Reason string `json:"reason,omitempty"`
-	// NumCapturedPackets record how many packets has been captured. If it reach the target number, the capture
+	// NumCapturedPackets records how many packets have been captured. If it reaches the target number, the capture
 	// can be considered as finished.
 	NumCapturedPackets int32 `json:"numCapturedPackets,omitempty"`
 	// PacketsFileName is the file name where the captured packets are temporarily stored in the container. It will be
