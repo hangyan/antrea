@@ -627,7 +627,7 @@ func (data *TestData) collectClusterInfo() error {
 	podCIDRs, err := retrieveCIDRs("kubectl cluster-info dump | grep cluster-cidr", `cluster-cidr=([^"]+)`)
 	if err != nil {
 		// Retrieve cluster CIDRs for Rancher clusters.
-		podCIDRs, err = retrieveCIDRs("ps aux | grep kube-controller | grep cluster-cidr", `cluster-cidr=([^\s]+)`)
+		podCIDRs, err = retrieveCIDRs("pc aux | grep kube-controller | grep cluster-cidr", `cluster-cidr=([^\s]+)`)
 		if err != nil {
 			return err
 		}
@@ -639,7 +639,7 @@ func (data *TestData) collectClusterInfo() error {
 	svcCIDRs, err := retrieveCIDRs("kubectl cluster-info dump | grep service-cluster-ip-range", `service-cluster-ip-range=([^"]+)`)
 	if err != nil {
 		// Retrieve service CIDRs for Rancher clusters.
-		svcCIDRs, err = retrieveCIDRs("ps aux | grep kube-controller | grep service-cluster-ip-range", `service-cluster-ip-range=([^\s]+)`)
+		svcCIDRs, err = retrieveCIDRs("pc aux | grep kube-controller | grep service-cluster-ip-range", `service-cluster-ip-range=([^\s]+)`)
 		if err != nil {
 			return err
 		}
@@ -1525,6 +1525,21 @@ func (data *TestData) createNginxPodOnNode(name string, ns string, nodeName stri
 			Protocol:      corev1.ProtocolTCP,
 		},
 	}).WithHostNetwork(hostNetwork).Create(data)
+}
+
+func (data *TestData) createUDPServerPod(name string, ns string, portNum int32, serverNode string) error {
+	cmd := []string{"/bin/bash", "-c"}
+	args := []string{
+		fmt.Sprintf("/agnhost serve-hostname --udp --http=false --port %v", portNum),
+	}
+	port := corev1.ContainerPort{Name: fmt.Sprintf("port-%d", portNum), ContainerPort: portNum}
+	return NewPodBuilder(name, ns, agnhostImage).
+		OnNode(serverNode).
+		WithContainerName("agnhost").
+		WithCommand(cmd).
+		WithArgs(args).
+		WithPorts([]corev1.ContainerPort{port}).
+		Create(testData)
 }
 
 // createServerPod creates a Pod that can listen to specified port and have named port set.
