@@ -383,7 +383,7 @@ const (
 	FirstNCapture PacketCaptureType = "FirstNCapture"
 )
 
-type FirstNCaptureConfig struct {
+type PacketCaptureFirstNConfig struct {
 	Number int32 `json:"number,omitempty"`
 }
 
@@ -424,10 +424,10 @@ type PacketCaptureSpec struct {
 	Type PacketCaptureType `json:"type,omitempty"`
 	// FirstNCaptureConfig contains the config for the FirstN type capture. The only supported parameter is
 	// `Number` at the moment, meaning capturing the first specified number of packets in a flow.
-	FirstNCaptureConfig *FirstNCaptureConfig `json:"firstNCaptureConfig,omitempty"`
-	Source              Source               `json:"source,omitempty"`
-	Destination         Destination          `json:"destination,omitempty"`
-	Packet              Packet               `json:"packet,omitempty"`
+	FirstNCaptureConfig *PacketCaptureFirstNConfig `json:"firstNCaptureConfig,omitempty"`
+	Source              Source                     `json:"source,omitempty"`
+	Destination         Destination                `json:"destination,omitempty"`
+	Packet              Packet                     `json:"packet,omitempty"`
 	// FileServer specifies the sftp url config for the fileServer. Captured packets will be uploaded to this server.
 	FileServer BundleFileServer `json:"fileServer,omitempty"`
 }

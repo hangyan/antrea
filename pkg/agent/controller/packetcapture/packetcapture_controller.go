@@ -135,7 +135,7 @@ type Controller struct {
 	queue                      workqueue.RateLimitingInterface
 	runningPacketCapturesMutex sync.RWMutex
 	runningPacketCaptures      map[uint8]*packetCaptureState
-	sftpUploader               ftp.UpLoader
+	sftpUploader               ftp.Uploader
 }
 
 func NewPacketCaptureController(
@@ -169,7 +169,7 @@ func NewPacketCaptureController(
 		DeleteFunc: c.deletePacketCapture,
 	}, resyncPeriod)
 
-	c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInCategoryPC), c)
+	c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInCategoryPacketCapture), c)
 
 	c.serviceLister = serviceInformer.Lister()
 	c.serviceListerSynced = serviceInformer.Informer().HasSynced
@@ -605,7 +605,7 @@ func (c *Controller) allocateTag(name string) (uint8, error) {
 	return 0, fmt.Errorf("number of on-going PacketCapture operations already reached the upper limit: %d", maxTagNum)
 }
 
-func (c *Controller) getUploaderByProtocol(protocol StorageProtocolType) (ftp.UpLoader, error) {
+func (c *Controller) getUploaderByProtocol(protocol StorageProtocolType) (ftp.Uploader, error) {
 	if protocol == sftpProtocol {
 		return c.sftpUploader, nil
 	}

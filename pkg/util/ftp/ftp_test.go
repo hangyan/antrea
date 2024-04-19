@@ -29,14 +29,6 @@ func TestParseFTPUploadUrl(t *testing.T) {
 		expectedURL   url.URL
 	}{
 		{
-			url: "127.0.0.1:22/path",
-			expectedURL: url.URL{
-				Scheme: "sftp",
-				Host:   "127.0.0.1:22",
-				Path:   "/path",
-			},
-		},
-		{
 			url: "sftp://127.0.0.1:22/path",
 			expectedURL: url.URL{
 				Scheme: "sftp",

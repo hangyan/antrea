@@ -975,7 +975,7 @@ func (f *featurePodConnectivity) flowsToCapture(dataplaneTag uint8,
 		if ovsMetersAreSupported {
 			fb = fb.Action().Meter(PacketInMeterIDTF)
 		}
-		fb = fb.Action().SendToController([]byte{uint8(PacketInCategoryPC)}, false)
+		fb = fb.Action().SendToController([]byte{uint8(PacketInCategoryPacketCapture)}, false)
 		return fb
 	}
 
@@ -1253,7 +1253,7 @@ func (f *featureService) flowsToCapture(dataplaneTag uint8,
 		if ovsMetersAreSupported {
 			fb = fb.Action().Meter(PacketInMeterIDTF)
 		}
-		fb = fb.Action().SendToController([]byte{uint8(PacketInCategoryPC)}, false)
+		fb = fb.Action().SendToController([]byte{uint8(PacketInCategoryPacketCapture)}, false)
 		return fb
 	}
 

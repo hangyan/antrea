@@ -70,7 +70,7 @@ type SupportBundleController struct {
 	npq                          querier.AgentNetworkPolicyInfoQuerier
 	v4Enabled                    bool
 	v6Enabled                    bool
-	sftpUploader                 ftp.UpLoader
+	sftpUploader                 ftp.Uploader
 }
 
 func NewSupportBundleController(nodeName string,
@@ -301,7 +301,7 @@ func (c *SupportBundleController) uploadSupportBundle(supportBundle *cpv1b2.Supp
 	return uploader.Upload(supportBundle.FileServer.URL, fileName, cfg, outputFile)
 }
 
-func (c *SupportBundleController) getUploaderByProtocol(protocol ProtocolType) (ftp.UpLoader, error) {
+func (c *SupportBundleController) getUploaderByProtocol(protocol ProtocolType) (ftp.Uploader, error) {
 	if protocol == sftpProtocol {
 		return c.sftpUploader, nil
 	}

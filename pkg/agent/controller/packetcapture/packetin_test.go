@@ -115,7 +115,7 @@ func generatePacketCapture(name string) *crdv1alpha1.PacketCapture {
 		},
 		Status: crdv1alpha1.PacketCaptureStatus{},
 		Spec: crdv1alpha1.PacketCaptureSpec{
-			FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+			FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 				Number: 5,
 			},
 			FileServer: crdv1alpha1.BundleFileServer{

@@ -35,10 +35,7 @@ const (
 func ParseFTPUploadUrl(uploadUrl string) (*url.URL, error) {
 	parsedURL, err := url.Parse(uploadUrl)
 	if err != nil {
-		parsedURL, err = url.Parse("sftp://" + uploadUrl)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	if parsedURL.Scheme != "sftp" {
 		return nil, fmt.Errorf("not sftp protocol")
@@ -46,7 +43,7 @@ func ParseFTPUploadUrl(uploadUrl string) (*url.URL, error) {
 	return parsedURL, nil
 }
 
-type UpLoader interface {
+type Uploader interface {
 	// Upload uploads a file to the target sftp address using ssh config.
 	Upload(url string, fileName string, config *ssh.ClientConfig, outputFile afero.File) error
 }

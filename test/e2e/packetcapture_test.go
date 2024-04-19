@@ -52,11 +52,10 @@ type pcTestCase struct {
 	expectedPhase  crdv1alpha1.PacketCapturePhase
 	expectedReason string
 	expectedNum    int32
-	// required IP version, skip if not match, default is 0 (no restrict)
+	// required IP version, skip if not match.
 	ipVersion int
 	// Source Pod to run ping for live-traffic PacketCapture.
-	srcPod       string
-	skipIfNeeded func(t *testing.T)
+	srcPod string
 }
 
 func genSFTPService() *v1.Service {
@@ -113,10 +112,22 @@ func genSFTPDeployment() *appsv1.Deployment {
 	}
 }
 
+func createUDPServerPod(name string, ns string, portNum int32, serverNode string) error {
+	args := []string{
+		fmt.Sprintf("serve-hostname --udp --http=false --port %v", portNum),
+	}
+	port := v1.ContainerPort{Name: fmt.Sprintf("port-%d", portNum), ContainerPort: portNum}
+	return NewPodBuilder(name, ns, agnhostImage).
+		OnNode(serverNode).
+		WithContainerName("agnhost").
+		WithArgs(args).
+		WithPorts([]v1.ContainerPort{port}).
+		Create(testData)
+}
+
 // TestPacketCapture is the top-level test which contains all subtests for
 // PacketCapture related test cases so they can share setup, teardown.
 func TestPacketCapture(t *testing.T) {
-
 	data, err := setupTest(t)
 	if err != nil {
 		t.Fatalf("Error when setting up test: %v", err)
@@ -224,7 +235,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 						IP: podIPs[tcpServerPodName].IPv4.String(),
 					},
 					Type: crdv1alpha1.FirstNCapture,
-					FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
@@ -264,7 +275,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 						Namespace: data.testNamespace,
 					},
 					Type: crdv1alpha1.FirstNCapture,
-					FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
@@ -309,7 +320,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 	node1 := nodeName(nodeIdx)
 
 	node1Pods, _, _ := createTestAgnhostPods(t, data, 3, data.testNamespace, node1)
-	err := data.createUDPServerPod(udpServerPodName, data.testNamespace, serverPodPort, node1)
+	err := createUDPServerPod(udpServerPodName, data.testNamespace, serverPodPort, node1)
 	defer data.DeletePodAndWait(defaultTimeout, udpServerPodName, data.testNamespace)
 	require.NoError(t, err)
 	// test tcp server pod
@@ -343,7 +354,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Pod:       tcpServerPodName,
 					},
 					Type: crdv1alpha1.FirstNCapture,
-					FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
@@ -384,7 +395,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 
 					Type:    crdv1alpha1.FirstNCapture,
 					Timeout: 300,
-					FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
@@ -424,7 +435,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					},
 
 					Type: crdv1alpha1.FirstNCapture,
-					FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
@@ -459,7 +470,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					},
 
 					Type: crdv1alpha1.FirstNCapture,
-					FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
@@ -494,7 +505,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Pod:       nonExistPodName,
 					},
 					Type: crdv1alpha1.FirstNCapture,
-					FirstNCaptureConfig: &crdv1alpha1.FirstNCaptureConfig{
+					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
@@ -532,10 +543,6 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 	case 6:
 		skipIfNotIPv6Cluster(t)
 	}
-	if tc.skipIfNeeded != nil {
-		tc.skipIfNeeded(t)
-	}
-
 	// wait for toolbox
 	waitForPodIPs(t, data, []PodInfo{{pcToolboxPodName, getOSString(), "", data.testNamespace}})
 
@@ -604,36 +611,36 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 		}
 	}
 
-	ps, err := data.waitForPacketCapture(t, tc.pc.Name, tc.expectedPhase)
+	pc, err := data.waitForPacketCapture(t, tc.pc.Name, tc.expectedPhase)
 	if err != nil {
 		t.Fatalf("Error: Get PacketCapture failed: %v", err)
 	}
 	if tc.expectedPhase == crdv1alpha1.PacketCaptureFailed {
-		if ps.Status.Reason != tc.expectedReason {
-			t.Fatalf("Error: PacketCapture Error Reason should be %v, but got %s", tc.expectedReason, ps.Status.Reason)
+		if pc.Status.Reason != tc.expectedReason {
+			t.Fatalf("Error: PacketCapture Error Reason should be %v, but got %s", tc.expectedReason, pc.Status.Reason)
 		}
 	}
-	if ps.Status.NumCapturedPackets != tc.expectedNum {
-		t.Fatalf("Error: PacketCapture captured packets count should be %v, but got %v", tc.expectedNum, ps.Status.NumCapturedPackets)
+	if pc.Status.NumCapturedPackets != tc.expectedNum {
+		t.Fatalf("Error: PacketCapture captured packets count should be %v, but got %v", tc.expectedNum, pc.Status.NumCapturedPackets)
 	}
 
 }
 
 func (data *TestData) waitForPacketCapture(t *testing.T, name string, phase crdv1alpha1.PacketCapturePhase) (*crdv1alpha1.PacketCapture, error) {
-	var ps *crdv1alpha1.PacketCapture
+	var pc *crdv1alpha1.PacketCapture
 	var err error
 	timeout := 15 * time.Second
 	if err = wait.PollUntilContextTimeout(context.Background(), defaultInterval, timeout, true, func(ctx context.Context) (bool, error) {
-		ps, err = data.crdClient.CrdV1alpha1().PacketCaptures().Get(ctx, name, metav1.GetOptions{})
-		if err != nil || ps.Status.Phase != phase {
+		pc, err = data.crdClient.CrdV1alpha1().PacketCaptures().Get(ctx, name, metav1.GetOptions{})
+		if err != nil || pc.Status.Phase != phase {
 			return false, nil
 		}
 		return true, nil
 	}); err != nil {
-		if ps != nil {
-			t.Errorf("Latest PacketCapture status: %s %v", ps.Name, ps.Status)
+		if pc != nil {
+			t.Errorf("Latest PacketCapture status: %s %v", pc.Name, pc.Status)
 		}
 		return nil, err
 	}
-	return ps, nil
+	return pc, nil
 }

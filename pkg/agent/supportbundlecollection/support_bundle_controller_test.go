@@ -70,7 +70,7 @@ func TestSupportBundleCollectionAdd(t *testing.T) {
 		supportBundleCollection *cpv1b2.SupportBundleCollection
 		expectedCompleted       bool
 		agentDumper             *mockAgentDumper
-		uploader                ftp.UpLoader
+		uploader                ftp.Uploader
 	}{
 		{
 			name:                    "Add SupportBundleCollection",

@@ -136,6 +136,7 @@ spec:
                   properties:
                     number:
                       type: integer
+                      format: int32
                 fileServer:
                   type: object
                   properties:
