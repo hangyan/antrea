@@ -1,6 +1,6 @@
 # Packet Capture User Guide
 
-Starting with Antrea v2.0, Antrea supports using packet capture for network diagnosis.
+Starting with Antrea v2.0, Antrea supports the packet capture feature for network diagnosis.
 It can capture specified number of packets from real traffic and upload them to a
 supported storage location. Users can create a PacketCapture CRD to trigger
 packet capture on the target traffic flow.
@@ -49,7 +49,7 @@ spec:
   fileServer:
     url: sftp://127.0.0.1:22/upload # define your own ftp url here.
   timeout: 60
-  type: FirstNCapture
+  type: FirstN
   firstNCaptureConfig:
     number: 5
   source:

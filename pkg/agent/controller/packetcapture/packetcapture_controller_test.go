@@ -549,7 +549,7 @@ func TestSyncPacketCapture(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					Type: crdv1alpha1.FirstNCapture,
+					Type: crdv1alpha1.PacketCaptureFirstN,
 					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
@@ -616,7 +616,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					Namespace: pod2.Namespace,
 					Pod:       pod2.Name,
 				},
-				Type: crdv1alpha1.FirstNCapture,
+				Type: crdv1alpha1.PacketCaptureFirstN,
 				FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 					Number: 5,
 				},
@@ -664,7 +664,7 @@ func TestProcessPacketCaptureItem(t *testing.T) {
 				FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
 					Number: 5,
 				},
-				Type: crdv1alpha1.FirstNCapture,
+				Type: crdv1alpha1.PacketCaptureFirstN,
 			},
 		},
 		ofPort: ofPortPod1,
