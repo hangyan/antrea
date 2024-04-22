@@ -118,7 +118,7 @@ type fakePacketCaptureController struct {
 	informerFactory    informers.SharedInformerFactory
 }
 
-func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Object, initObjects []runtime.Object, networkConfig *config.NetworkConfig, nodeConfig *config.NodeConfig) *fakePacketCaptureController {
+func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Object, initObjects []runtime.Object, nodeConfig *config.NodeConfig) *fakePacketCaptureController {
 	controller := gomock.NewController(t)
 	objs := []runtime.Object{
 		&pod1,
@@ -206,7 +206,7 @@ func TestErrPacketCaptureCRD(t *testing.T) {
 	expectedPC.Status.Phase = crdv1alpha1.PacketCaptureFailed
 	expectedPC.Status.Reason = reason
 
-	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc}, nil, nil)
+	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc}, nil)
 
 	err := pcc.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureFailed, reason, 0)
 	require.NoError(t, err)
@@ -247,7 +247,7 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								SrcPort: 80,
@@ -278,7 +278,7 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod1.Namespace,
 						Pod:       pod1.Name,
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPHeader: crdv1alpha1.IPHeader{},
 					},
 				},
@@ -303,7 +303,7 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPv6Header: &crdv1alpha1.IPv6Header{},
 					},
 				},
@@ -322,7 +322,7 @@ func TestPreparePacket(t *testing.T) {
 					Destination: crdv1alpha1.Destination{
 						IP: "2001:db8::68",
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPv6Header: &crdv1alpha1.IPv6Header{NextHeader: &protocolICMPv6},
 					},
 				},
@@ -346,7 +346,7 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								SrcPort: 80,
@@ -376,7 +376,7 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						TransportHeader: crdv1alpha1.TransportHeader{
 							UDP: &crdv1alpha1.UDPHeader{
 								SrcPort: 80,
@@ -406,7 +406,7 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						TransportHeader: crdv1alpha1.TransportHeader{
 							ICMP: &crdv1alpha1.ICMPEchoRequestHeader{},
 						},
@@ -444,7 +444,7 @@ func TestPreparePacket(t *testing.T) {
 						Service:   service1.Name,
 						Namespace: service1.Namespace,
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								SrcPort: 80,
@@ -466,7 +466,7 @@ func TestPreparePacket(t *testing.T) {
 	}
 	for _, pc := range pcs {
 		t.Run(pc.name, func(t *testing.T) {
-			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc}, nil, nil)
+			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc}, nil)
 			podInterfaces := pcc.interfaceStore.GetContainerInterfacesByPod(pod1.Name, pod1.Namespace)
 			if pc.intf != nil {
 				podInterfaces[0] = pc.intf
@@ -572,7 +572,7 @@ func TestSyncPacketCapture(t *testing.T) {
 
 	for _, pc := range pcs {
 		t.Run(pc.name, func(t *testing.T) {
-			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc}, nil, nil)
+			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc}, nil)
 			stopCh := make(chan struct{})
 			defer close(stopCh)
 			pcc.crdInformerFactory.Start(stopCh)
@@ -625,7 +625,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		newState: &packetCaptureState{tag: 1},
 	}
 
-	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc}, nil, nil)
+	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc}, nil)
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	pcc.crdInformerFactory.Start(stopCh)
@@ -675,13 +675,13 @@ func TestProcessPacketCaptureItem(t *testing.T) {
 		expected: true,
 	}
 
-	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc}, nil, nil)
+	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc}, nil)
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	pcc.crdInformerFactory.Start(stopCh)
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 
-	pcc.mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(1), false, pc.receiverOnly, pc.packet, nil, pc.ofPort, uint16(crdv1alpha1.DefaultPacketCaptureTimeout))
+	pcc.mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(1), false, pc.receiverOnly, pc.packet, nil, pc.ofPort, crdv1alpha1.DefaultPacketCaptureTimeout)
 	pcc.enqueuePacketCapture(pc.pc)
 	got := pcc.processPacketCaptureItem()
 	assert.Equal(t, pc.expected, got)
@@ -785,7 +785,7 @@ func TestStartPacketCapture(t *testing.T) {
 
 	for _, tt := range tcs {
 		t.Run(tt.name, func(t *testing.T) {
-			tfc := newFakePacketCaptureController(t, nil, []runtime.Object{tt.pc}, nil, tt.nodeConfig)
+			tfc := newFakePacketCaptureController(t, nil, []runtime.Object{tt.pc}, tt.nodeConfig)
 			if tt.expectedCalls != nil {
 				tt.expectedCalls(tfc.mockOFClient)
 			}
@@ -833,7 +833,7 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 						Namespace: pod1.Namespace,
 						Service:   "svc1",
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								DstPort: 80,
@@ -857,7 +857,7 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 							Name: "http",
 							Port: 80,
 							TargetPort: intstr.IntOrString{
-								Type:   intstr.Type(intstr.Int),
+								Type:   intstr.Int,
 								IntVal: 8080,
 							},
 						},
@@ -875,7 +875,7 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 						Namespace: pod1.Namespace,
 						Service:   "svc1",
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								DstPort: 80,
@@ -910,7 +910,7 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 							Name: "http",
 							Port: 80,
 							TargetPort: intstr.IntOrString{
-								Type:   intstr.Type(intstr.Int),
+								Type:   intstr.Int,
 								IntVal: 8080,
 							},
 						},
@@ -951,7 +951,7 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 						Namespace: pod1.Namespace,
 						Service:   "svc1",
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								DstPort: 80,
@@ -965,7 +965,7 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 
 	for _, pc := range pcs {
 		t.Run(pc.name, func(t *testing.T) {
-			pcc := newFakePacketCaptureController(t, pc.objs, []runtime.Object{pc.pc}, nil, nil)
+			pcc := newFakePacketCaptureController(t, pc.objs, []runtime.Object{pc.pc}, nil)
 			stopCh := make(chan struct{})
 			defer close(stopCh)
 			pcc.crdInformerFactory.Start(stopCh)

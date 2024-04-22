@@ -237,7 +237,7 @@ func TestHandlePacketCapturePacketIn(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{tt.expectedPC}, nil, &config.NodeConfig{Name: "node1"})
+			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{tt.expectedPC}, &config.NodeConfig{Name: "node1"})
 			if tt.expectedCalls != nil {
 				tt.expectedCalls(pcc.mockOFClient)
 			}

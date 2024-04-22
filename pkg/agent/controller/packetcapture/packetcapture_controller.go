@@ -321,14 +321,6 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 
 		}
 	}()
-
-	// do a simple check to ensure user have at least one pod specified. this check is not supported in
-	// crd schema yet, so we put it here.
-	if pc.Spec.Source.Pod == "" && pc.Spec.Destination.Pod == "" {
-		err = errors.New("at least one pod should be present in either .spec.source or .spec.destination")
-		return err
-	}
-
 	receiverOnly := false
 	senderOnly := false
 	var pod, ns string
@@ -436,7 +428,7 @@ func (c *Controller) genEndpointMatchPackets(pc *crdv1alpha1.PacketCapture) ([]b
 		if port != 0 {
 			packet.DestinationPort = uint16(port)
 		}
-		packet.IPProto, _ = parseTargetProto(&pc.Spec.Packet)
+		packet.IPProto, _ = parseTargetProto(pc.Spec.Packet)
 		packets = append(packets, packet)
 	}
 	return packets, nil
@@ -444,6 +436,9 @@ func (c *Controller) genEndpointMatchPackets(pc *crdv1alpha1.PacketCapture) ([]b
 
 func (c *Controller) preparePacket(pc *crdv1alpha1.PacketCapture, intf *interfacestore.InterfaceConfig, receiverOnly bool) (*binding.Packet, error) {
 	packet := new(binding.Packet)
+	if pc.Spec.Packet == nil {
+		pc.Spec.Packet = &crdv1alpha1.Packet{}
+	}
 	packet.IsIPv6 = pc.Spec.Packet.IPv6Header != nil
 
 	if receiverOnly {
@@ -515,7 +510,7 @@ func (c *Controller) preparePacket(pc *crdv1alpha1.PacketCapture, intf *interfac
 		packet.DestinationPort = uint16(pc.Spec.Packet.TransportHeader.UDP.DstPort)
 	}
 
-	proto, err := parseTargetProto(&pc.Spec.Packet)
+	proto, err := parseTargetProto(pc.Spec.Packet)
 	if err != nil {
 		return nil, err
 	}

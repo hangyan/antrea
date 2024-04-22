@@ -4339,6 +4339,13 @@ spec:
                 - firstNCaptureConfig
                 - source
                 - destination
+              anyOf:
+                - properties:
+                    source:
+                      required: [pod]
+                - properties:
+                    destination:
+                      required: [pod]
               properties:
                 source:
                   type: object

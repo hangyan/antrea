@@ -123,7 +123,7 @@ func createUDPServerPod(name string, ns string, portNum int32, serverNode string
 }
 
 // TestPacketCapture is the top-level test which contains all subtests for
-// PacketCapture related test cases so they can share setup, teardown.
+// PacketCapture related test cases, so they can share setup, teardown.
 func TestPacketCapture(t *testing.T) {
 	data, err := setupTest(t)
 	if err != nil {
@@ -210,7 +210,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 		{pcToolboxPodName, getOSString(), "", data.testNamespace},
 	})
 
-	// Give a little time for Windows containerd Nodes to setup OVS.
+	// Give a little time for Windows containerd Nodes to set up OVS.
 	// Containerd configures port asynchronously, which could cause execution time of installing flow longer than docker.
 	time.Sleep(time.Second * 1)
 
@@ -238,7 +238,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPHeader: crdv1alpha1.IPHeader{
 							Protocol: protocolTCP,
 						},
@@ -278,7 +278,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPHeader: crdv1alpha1.IPHeader{
 							Protocol: protocolTCP,
 						},
@@ -328,7 +328,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 	defer data.DeletePodAndWait(defaultTimeout, pcToolboxPodName, data.testNamespace)
 	require.NoError(t, err)
 
-	// Give a little time for Windows containerd Nodes to setup OVS.
+	// Give a little time for Windows containerd Nodes to set up OVS.
 	// Containerd configures port asynchronously, which could cause execution time of installing flow longer than docker.
 	time.Sleep(time.Second * 1)
 
@@ -357,7 +357,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPHeader: crdv1alpha1.IPHeader{
 							Protocol: protocolTCP,
 						},
@@ -398,7 +398,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPHeader: crdv1alpha1.IPHeader{
 							Protocol: protocolUDP,
 						},
@@ -438,7 +438,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPHeader: crdv1alpha1.IPHeader{
 							Protocol: protocolICMP,
 						},
@@ -473,7 +473,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
-					Packet: crdv1alpha1.Packet{
+					Packet: &crdv1alpha1.Packet{
 						IPv6Header: &crdv1alpha1.IPv6Header{
 							NextHeader: &protocolICMPv6,
 						},

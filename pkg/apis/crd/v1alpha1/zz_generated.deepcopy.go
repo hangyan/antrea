@@ -471,7 +471,11 @@ func (in *PacketCaptureSpec) DeepCopyInto(out *PacketCaptureSpec) {
 	}
 	out.Source = in.Source
 	out.Destination = in.Destination
-	in.Packet.DeepCopyInto(&out.Packet)
+	if in.Packet != nil {
+		in, out := &in.Packet, &out.Packet
+		*out = new(Packet)
+		(*in).DeepCopyInto(*out)
+	}
 	out.FileServer = in.FileServer
 	return
 }
