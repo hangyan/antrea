@@ -49,9 +49,9 @@ spec:
   fileServer:
     url: sftp://127.0.0.1:22/upload # define your own ftp url here.
   timeout: 60
-  type: FirstN
-  firstNCaptureConfig:
-    number: 5
+  captureConfig:
+    firstN:
+      number: 5
   source:
     namespace: default
     pod: frontend

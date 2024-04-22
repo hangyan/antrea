@@ -377,12 +377,8 @@ type Packet struct {
 	TransportHeader TransportHeader `json:"transportHeader,omitempty"`
 }
 
-type PacketCaptureType string
-
-const (
-	PacketCaptureFirstN PacketCaptureType = "FirstN"
-)
-
+// PacketCaptureFirstNConfig contains the config for the FirstN type capture. The only supported parameter is
+// `Number` at the moment, meaning capturing the first specified number of packets in a flow.
 type PacketCaptureFirstNConfig struct {
 	Number int32 `json:"number,omitempty"`
 }
@@ -418,16 +414,16 @@ type PacketCapture struct {
 	Status            PacketCaptureStatus `json:"status,omitempty"`
 }
 
+type CaptureConfig struct {
+	FirstN *PacketCaptureFirstNConfig `json:"firstN,omitempty"`
+}
+
 type PacketCaptureSpec struct {
-	Timeout uint16 `json:"timeout,omitempty"`
-	// Type is the capture type. Currently only FirstN is supported.
-	Type PacketCaptureType `json:"type,omitempty"`
-	// FirstNCaptureConfig contains the config for the FirstN type capture. The only supported parameter is
-	// `Number` at the moment, meaning capturing the first specified number of packets in a flow.
-	FirstNCaptureConfig *PacketCaptureFirstNConfig `json:"firstNCaptureConfig"`
-	Source              Source                     `json:"source"`
-	Destination         Destination                `json:"destination"`
-	Packet              *Packet                    `json:"packet,omitempty"`
+	Timeout       uint16        `json:"timeout,omitempty"`
+	CaptureConfig CaptureConfig `json:"captureConfig"`
+	Source        Source        `json:"source"`
+	Destination   Destination   `json:"destination"`
+	Packet        *Packet       `json:"packet,omitempty"`
 	// FileServer specifies the sftp url config for the fileServer. Captured packets will be uploaded to this server.
 	FileServer BundleFileServer `json:"fileServer"`
 }

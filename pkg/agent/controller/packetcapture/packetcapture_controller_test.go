@@ -549,9 +549,10 @@ func TestSyncPacketCapture(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					Type: crdv1alpha1.PacketCaptureFirstN,
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 				},
 				Status: crdv1alpha1.PacketCaptureStatus{
@@ -616,9 +617,10 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					Namespace: pod2.Namespace,
 					Pod:       pod2.Name,
 				},
-				Type: crdv1alpha1.PacketCaptureFirstN,
-				FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-					Number: 5,
+				CaptureConfig: crdv1alpha1.CaptureConfig{
+					FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+						Number: 5,
+					},
 				},
 			},
 		},
@@ -661,10 +663,11 @@ func TestProcessPacketCaptureItem(t *testing.T) {
 					Namespace: pod2.Namespace,
 					Pod:       pod2.Name,
 				},
-				FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-					Number: 5,
+				CaptureConfig: crdv1alpha1.CaptureConfig{
+					FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+						Number: 5,
+					},
 				},
-				Type: crdv1alpha1.PacketCaptureFirstN,
 			},
 		},
 		ofPort: ofPortPod1,
@@ -715,8 +718,10 @@ func TestStartPacketCapture(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 				},
 
@@ -756,8 +761,10 @@ func TestStartPacketCapture(t *testing.T) {
 					Destination: crdv1alpha1.Destination{
 						IP: dstIPv4,
 					},
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 				},
 				Status: crdv1alpha1.PacketCaptureStatus{

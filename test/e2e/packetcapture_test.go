@@ -231,9 +231,10 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					Destination: crdv1alpha1.Destination{
 						IP: podIPs[tcpServerPodName].IPv4.String(),
 					},
-					Type: crdv1alpha1.PacketCaptureFirstN,
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
@@ -271,9 +272,10 @@ func testPacketCapture(t *testing.T, data *TestData) {
 						Service:   dstServiceName,
 						Namespace: data.testNamespace,
 					},
-					Type: crdv1alpha1.PacketCaptureFirstN,
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
@@ -350,9 +352,10 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Namespace: data.testNamespace,
 						Pod:       tcpServerPodName,
 					},
-					Type: crdv1alpha1.PacketCaptureFirstN,
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
@@ -389,11 +392,10 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Namespace: data.testNamespace,
 						Pod:       udpServerPodName,
 					},
-
-					Type:    crdv1alpha1.PacketCaptureFirstN,
-					Timeout: 300,
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
@@ -430,10 +432,10 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Namespace: data.testNamespace,
 						Pod:       node1Pods[1],
 					},
-
-					Type: crdv1alpha1.PacketCaptureFirstN,
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
@@ -465,10 +467,10 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Namespace: data.testNamespace,
 						Pod:       node1Pods[1],
 					},
-
-					Type: crdv1alpha1.PacketCaptureFirstN,
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
@@ -501,9 +503,10 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Namespace: data.testNamespace,
 						Pod:       nonExistPodName,
 					},
-					Type: crdv1alpha1.PacketCaptureFirstN,
-					FirstNCaptureConfig: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
 					},
 					FileServer: crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),

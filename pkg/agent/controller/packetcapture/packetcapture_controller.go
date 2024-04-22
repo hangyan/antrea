@@ -100,7 +100,7 @@ func getPacketDirectory() string {
 type packetCaptureState struct {
 	// name is the PacketCapture name
 	name string
-	// tag is a node scope unique id for the PacketCapture. It will be write into ovs reg and parsed in packetIn handler
+	// tag is a node scope unique id for the PacketCapture. It will be written into ovs reg and parsed in packetIn handler
 	// to match with existing PacketCapture.
 	tag uint8
 	// shouldSyncPackets means this node will be responsible for doing the actual packet capture job.
@@ -360,7 +360,7 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 	}
 
 	c.runningPacketCapturesMutex.Lock()
-	pcState.maxNumCapturedPackets = pc.Spec.FirstNCaptureConfig.Number
+	pcState.maxNumCapturedPackets = pc.Spec.CaptureConfig.FirstN.Number
 	var file afero.File
 	filePath := uidToPath(string(pc.UID))
 	if _, err := os.Stat(filePath); err == nil {
@@ -721,7 +721,8 @@ func (c *Controller) checkPacketCaptureStatus(pc *crdv1alpha1.PacketCapture) err
 
 func checkPacketCaptureSucceeded(pc *crdv1alpha1.PacketCapture) bool {
 	succeeded := false
-	if pc.Spec.Type == crdv1alpha1.PacketCaptureFirstN && pc.Status.NumCapturedPackets == pc.Spec.FirstNCaptureConfig.Number {
+	cfg := pc.Spec.CaptureConfig.FirstN
+	if cfg != nil && pc.Status.NumCapturedPackets == cfg.Number {
 		succeeded = true
 	}
 	return succeeded

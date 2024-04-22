@@ -48,8 +48,8 @@ spec:
               type: object
               required:
                 - fileServer
-                - firstNCaptureConfig
                 - source
+                - captureConfig
                 - destination
               anyOf:
                 - properties:
@@ -135,15 +135,19 @@ spec:
                   type: integer
                   minimum: 1
                   maximum: 300
-                type:
-                  type: string
-                  enum: [FirstN]
-                firstNCaptureConfig:
+                captureConfig:
                   type: object
+                  anyOf:
+                    - properties:
+                        firstN:
+                          required: [number]
                   properties:
-                    number:
-                      type: integer
-                      format: int32
+                    firstN:
+                      type: object
+                      properties:
+                        number:
+                          type: integer
+                          format: int32
                 fileServer:
                   type: object
                   properties:
