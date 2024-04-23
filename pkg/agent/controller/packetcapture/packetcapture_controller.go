@@ -206,9 +206,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		return
 	}
 
-	go func() {
-		wait.Until(c.checkPacketCaptureTimeout, timeoutCheckInterval, stopCh)
-	}()
+	go wait.Until(c.checkPacketCaptureTimeout, timeoutCheckInterval, stopCh)
 
 	for i := 0; i < defaultWorkers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
@@ -218,7 +216,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 func (c *Controller) checkPacketCaptureTimeout() {
 	c.runningPacketCapturesMutex.RLock()
-	ss := make([]string, 0, len(c.runningPacketCaptures))
+	pcs := make([]string, 0, len(c.runningPacketCaptures))
 	for _, pcState := range c.runningPacketCaptures {
 		ss = append(ss, pcState.name)
 	}
@@ -238,7 +236,7 @@ func (c *Controller) addPacketCapture(obj interface{}) {
 
 func (c *Controller) updatePacketCapture(_, obj interface{}) {
 	pc := obj.(*crdv1alpha1.PacketCapture)
-	klog.InfoS("Processing PacketCapture UPDATE EVENT", "name", pc.Name)
+	klog.InfoS("Processing PacketCapture UPDATE event", "name", pc.Name)
 	c.enqueuePacketCapture(pc)
 }
 
@@ -274,7 +272,7 @@ func (c *Controller) processPacketCaptureItem() bool {
 	defer c.queue.Done(obj)
 	if key, ok := obj.(string); !ok {
 		c.queue.Forget(obj)
-		klog.ErrorS(nil, "Expected string in work queue but got", "obj", obj)
+		klog.ErrorS(nil, "Expected string in work queue but got non-string object", "obj", obj)
 		return true
 	} else if err := c.syncPacketCapture(key); err == nil {
 		c.queue.Forget(key)
