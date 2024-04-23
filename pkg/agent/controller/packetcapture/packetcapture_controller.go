@@ -77,6 +77,7 @@ const (
 	// reason for timeout
 	captureTimeoutReason   = "PacketCapture timeout"
 	defaultTimeoutDuration = time.Second * time.Duration(crdv1alpha1.DefaultPacketCaptureTimeout)
+	timeoutCheckInterval   = 10 * time.Second
 
 	captureStatusUpdatePeriod = 10 * time.Second
 
@@ -87,8 +88,6 @@ const (
 )
 
 var (
-	timeoutCheckInterval = 10 * time.Second
-
 	packetDirectory = getPacketDirectory()
 	defaultFS       = afero.NewOsFs()
 )
