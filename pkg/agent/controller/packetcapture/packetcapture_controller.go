@@ -217,10 +217,10 @@ func (c *Controller) checkPacketCaptureTimeout() {
 	c.runningPacketCapturesMutex.RLock()
 	pcs := make([]string, 0, len(c.runningPacketCaptures))
 	for _, pcState := range c.runningPacketCaptures {
-		ss = append(ss, pcState.name)
+		pcs = append(pcs, pcState.name)
 	}
 	c.runningPacketCapturesMutex.RUnlock()
-	for _, pcName := range ss {
+	for _, pcName := range pcs {
 		// Re-post all running PacketCapture requests to the work queue to
 		// be processed and checked for timeout.
 		c.queue.Add(pcName)
@@ -523,26 +523,18 @@ func parseTargetProto(packet *crdv1alpha1.Packet) (uint8, error) {
 		if packet.IPv6Header.NextHeader != nil {
 			ipProto = uint8(*packet.IPv6Header.NextHeader)
 		}
-	} else if packet.IPHeader.Protocol != 0 {
-		ipProto = uint8(packet.IPHeader.Protocol)
 	}
-
-	proto2 := ipProto
 	if packet.TransportHeader.TCP != nil {
-		proto2 = protocol.Type_TCP
+		ipProto = protocol.Type_TCP
 	} else if packet.TransportHeader.UDP != nil {
-		proto2 = protocol.Type_UDP
+		ipProto = protocol.Type_UDP
 	} else if packet.TransportHeader.ICMP != nil || ipProto == 0 {
-		proto2 = protocol.Type_ICMP
+		ipProto = protocol.Type_ICMP
 		if isIPv6 {
-			proto2 = protocol.Type_IPv6ICMP
+			ipProto = protocol.Type_IPv6ICMP
 		}
 	}
-
-	if ipProto != 0 && proto2 != ipProto {
-		return 0, errors.New("conflicting protocol settings in ipHeader and transportHeader")
-	}
-	return proto2, nil
+	return ipProto, nil
 }
 
 func (c *Controller) syncPacketCapture(pcName string) error {
