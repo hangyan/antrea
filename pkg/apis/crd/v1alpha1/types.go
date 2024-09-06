@@ -372,7 +372,6 @@ type Packet struct {
 	DstIP string `json:"dstIP,omitempty"`
 	// Length is the IP packet length (includes the IPv4 or IPv6 header length).
 	Length          int32           `json:"length,omitempty"`
-	IPHeader        IPHeader        `json:"ipHeader,omitempty"`
 	IPv6Header      *IPv6Header     `json:"ipv6Header,omitempty"`
 	TransportHeader TransportHeader `json:"transportHeader,omitempty"`
 }

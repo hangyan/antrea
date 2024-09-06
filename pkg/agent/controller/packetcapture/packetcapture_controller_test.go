@@ -278,9 +278,6 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod1.Namespace,
 						Pod:       pod1.Name,
 					},
-					Packet: &crdv1alpha1.Packet{
-						IPHeader: crdv1alpha1.IPHeader{},
-					},
 				},
 			},
 			receiverOnly: true,
