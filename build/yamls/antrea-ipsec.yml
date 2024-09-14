@@ -3935,8 +3935,11 @@ data:
     # be enabled, otherwise this flag will not take effect.
     #  CleanupStaleUDPSvcConntrack: true
 
-    # Enable traceflow which provides packet tracing feature to diagnose network issue.
+    # Enable Traceflow which provides packet tracing feature to diagnose network issue.
     #  Traceflow: true
+
+    # Enable PacketCapture feature which supports capturing packets to diagnose network issues.
+    #  PacketCapture: false
 
     # Enable NodePortLocal feature to make the Pods reachable externally through NodePort
     #  NodePortLocal: true
@@ -4522,6 +4525,14 @@ rules:
   - apiGroups:
       - ""
     resources:
+      - secrets
+    resourceNames:
+      - antrea-packetcapture-fileserver-auth
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
       - endpoints
       - services
       - namespaces
@@ -4640,6 +4651,20 @@ rules:
       - patch
       - create
       - delete
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetcaptures
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetcaptures/status
+    verbs:
+      - patch
   - apiGroups:
       - crd.antrea.io
     resources:
@@ -5333,7 +5358,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 9e94f199d125877d889ba73e053c95b342e89323d0423cde074ae074df379494
+        checksum/config: 7d8b0a065c3db85e34e127fdf38b820b32712657900e3f8fe2703d4310c40632
         checksum/ipsec-secret: d0eb9c52d0cd4311b6d252a951126bf9bea27ec05590bed8a394f0f792dcb2a4
       labels:
         app: antrea
@@ -5615,7 +5640,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 9e94f199d125877d889ba73e053c95b342e89323d0423cde074ae074df379494
+        checksum/config: 7d8b0a065c3db85e34e127fdf38b820b32712657900e3f8fe2703d4310c40632
       labels:
         app: antrea
         component: antrea-controller
