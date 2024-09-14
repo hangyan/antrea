@@ -51,16 +51,20 @@ import (
 )
 
 var (
-	pod1IPv4     = "192.168.10.10"
-	pod2IPv4     = "192.168.11.10"
-	service1IPv4 = "10.96.0.10"
-	dstIPv4      = "192.168.99.99"
-	pod1MAC, _   = net.ParseMAC("aa:bb:cc:dd:ee:0f")
-	pod2MAC, _   = net.ParseMAC("aa:bb:cc:dd:ee:00")
-	ofPortPod1   = uint32(1)
-	ofPortPod2   = uint32(2)
-	testTCPFlags = int32(11)
-	icmp6Proto   = intstr.FromInt(58)
+	pod1IPv4           = "192.168.10.10"
+	pod2IPv4           = "192.168.11.10"
+	service1IPv4       = "10.96.0.10"
+	dstIPv4            = "192.168.99.99"
+	pod1MAC, _         = net.ParseMAC("aa:bb:cc:dd:ee:0f")
+	pod2MAC, _         = net.ParseMAC("aa:bb:cc:dd:ee:00")
+	ofPortPod1         = uint32(1)
+	ofPortPod2         = uint32(2)
+	testTCPFlags       = int32(11)
+	icmp6Proto         = intstr.FromInt(58)
+	tcpProto           = intstr.FromString("TCP")
+	icmpProto          = intstr.FromString("ICMP")
+	port80       int32 = 80
+	port81       int32 = 81
 
 	pod1 = v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -249,10 +253,11 @@ func TestPreparePacket(t *testing.T) {
 						Pod:       pod2.Name,
 					},
 					Packet: &crdv1alpha1.Packet{
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								SrcPort: 80,
-								DstPort: 81,
+								SrcPort: &port80,
+								DstPort: &port81,
 								Flags:   &testTCPFlags,
 							},
 						},
@@ -279,6 +284,10 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod1.Namespace,
 						Pod:       pod1.Name,
 					},
+					Packet: &crdv1alpha1.Packet{
+						IPFamily: v1.IPv4Protocol,
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "ICMP"},
+					},
 				},
 			},
 			receiverOnly: true,
@@ -303,6 +312,7 @@ func TestPreparePacket(t *testing.T) {
 					},
 					Packet: &crdv1alpha1.Packet{
 						IPFamily: v1.IPv6Protocol,
+						Protocol: &icmp6Proto,
 					},
 				},
 			},
@@ -346,10 +356,11 @@ func TestPreparePacket(t *testing.T) {
 						Pod:       pod2.Name,
 					},
 					Packet: &crdv1alpha1.Packet{
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								SrcPort: 80,
-								DstPort: 81,
+								SrcPort: &port80,
+								DstPort: &port81,
 							},
 						},
 					},
@@ -376,10 +387,11 @@ func TestPreparePacket(t *testing.T) {
 						Pod:       pod2.Name,
 					},
 					Packet: &crdv1alpha1.Packet{
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "UDP"},
 						TransportHeader: crdv1alpha1.TransportHeader{
 							UDP: &crdv1alpha1.UDPHeader{
-								SrcPort: 80,
-								DstPort: 100,
+								SrcPort: &port80,
+								DstPort: &port81,
 							},
 						},
 					},
@@ -389,7 +401,7 @@ func TestPreparePacket(t *testing.T) {
 				DestinationIP:   net.ParseIP(pod2IPv4),
 				IPProto:         protocol.Type_UDP,
 				SourcePort:      80,
-				DestinationPort: 100,
+				DestinationPort: 81,
 			},
 		},
 		{
@@ -405,7 +417,9 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: pod2.Namespace,
 						Pod:       pod2.Name,
 					},
-					Packet: &crdv1alpha1.Packet{},
+					Packet: &crdv1alpha1.Packet{
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "ICMP"},
+					},
 				},
 			},
 			expectedPacket: &binding.Packet{
@@ -440,10 +454,11 @@ func TestPreparePacket(t *testing.T) {
 						Namespace: service1.Namespace,
 					},
 					Packet: &crdv1alpha1.Packet{
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								SrcPort: 80,
-								DstPort: 81,
+								SrcPort: &port80,
+								DstPort: &port81,
 								Flags:   &testTCPFlags,
 							},
 						},
@@ -617,6 +632,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 						Number: 5,
 					},
 				},
+				Packet: &crdv1alpha1.Packet{
+					Protocol: &icmpProto,
+				},
 			},
 		},
 		newState: &packetCaptureState{tag: 1},
@@ -662,6 +680,9 @@ func TestProcessPacketCaptureItem(t *testing.T) {
 					FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
 						Number: 5,
 					},
+				},
+				Packet: &crdv1alpha1.Packet{
+					Protocol: &icmpProto,
 				},
 			},
 		},
@@ -836,9 +857,10 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 						Service:   "svc1",
 					},
 					Packet: &crdv1alpha1.Packet{
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								DstPort: 80,
+								DstPort: &port80,
 							},
 						},
 					},
@@ -878,9 +900,10 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 						Service:   "svc1",
 					},
 					Packet: &crdv1alpha1.Packet{
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								DstPort: 80,
+								DstPort: &port80,
 							},
 						},
 					},
@@ -954,9 +977,10 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 						Service:   "svc1",
 					},
 					Packet: &crdv1alpha1.Packet{
+						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								DstPort: 80,
+								DstPort: &port80,
 							},
 						},
 					},

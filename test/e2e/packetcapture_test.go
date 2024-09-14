@@ -49,6 +49,8 @@ var (
 	icmpProto  = intstr.FromInt(1)
 	udpProto   = intstr.FromInt(17)
 	icmp6Proto = intstr.FromInt(58)
+
+	testServerPort int32 = 80
 )
 
 type pcTestCase struct {
@@ -248,7 +250,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 						Protocol: &tcpProto,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								DstPort: serverPodPort,
+								DstPort: &testServerPort,
 							},
 						},
 					},
@@ -287,7 +289,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 						Protocol: &tcpProto,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								DstPort: serverPodPort,
+								DstPort: &testServerPort,
 							},
 						},
 					},
@@ -365,7 +367,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Protocol: &tcpProto,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								DstPort: serverPodPort,
+								DstPort: &testServerPort,
 							},
 						},
 					},
@@ -403,7 +405,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Protocol: &udpProto,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							UDP: &crdv1alpha1.UDPHeader{
-								DstPort: serverPodPort,
+								DstPort: &testServerPort,
 							},
 						},
 					},

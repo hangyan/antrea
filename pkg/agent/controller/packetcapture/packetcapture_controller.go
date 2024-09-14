@@ -393,15 +393,15 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 	return err
 }
 
-// genEndpointMatchPackets generates match packets (with destination Endpoint's IP/port info) besides the normal match packet.
+// genEndpointMatchPackets generates match packets (with destination Endpoint's IP/Port info) besides the normal match packet.
 // these match packets will help the pipeline to capture the pod -> svc traffic.
 // TODO: 1. support name based port name 2. dual-stack support
 func (c *Controller) genEndpointMatchPackets(pc *crdv1alpha1.PacketCapture) ([]binding.Packet, error) {
 	var port int32
-	if pc.Spec.Packet.TransportHeader.TCP != nil {
-		port = pc.Spec.Packet.TransportHeader.TCP.DstPort
-	} else if pc.Spec.Packet.TransportHeader.UDP != nil {
-		port = pc.Spec.Packet.TransportHeader.UDP.DstPort
+	if pc.Spec.Packet.TransportHeader.TCP != nil && pc.Spec.Packet.TransportHeader.TCP.DstPort != nil {
+		port = *pc.Spec.Packet.TransportHeader.TCP.DstPort
+	} else if pc.Spec.Packet.TransportHeader.UDP != nil && pc.Spec.Packet.TransportHeader.UDP.DstPort != nil {
+		port = *pc.Spec.Packet.TransportHeader.UDP.DstPort
 	}
 	var packets []binding.Packet
 	dstSvc, err := c.serviceLister.Services(pc.Spec.Destination.Namespace).Get(pc.Spec.Destination.Service)
@@ -425,7 +425,7 @@ func (c *Controller) genEndpointMatchPackets(pc *crdv1alpha1.PacketCapture) ([]b
 		if port != 0 {
 			packet.DestinationPort = uint16(port)
 		}
-		packet.IPProto, _ = parseTargetProto(pc.Spec.Packet)
+		packet.IPProto = parseTargetProto(pc.Spec.Packet)
 		packets = append(packets, packet)
 	}
 	return packets, nil
@@ -497,55 +497,45 @@ func (c *Controller) preparePacket(pc *crdv1alpha1.PacketCapture, intf *interfac
 	}
 
 	if pc.Spec.Packet.TransportHeader.TCP != nil {
-		packet.SourcePort = uint16(pc.Spec.Packet.TransportHeader.TCP.SrcPort)
-		packet.DestinationPort = uint16(pc.Spec.Packet.TransportHeader.TCP.DstPort)
+		if pc.Spec.Packet.TransportHeader.TCP.SrcPort != nil {
+			packet.SourcePort = uint16(*pc.Spec.Packet.TransportHeader.TCP.SrcPort)
+		}
+		if pc.Spec.Packet.TransportHeader.TCP.DstPort != nil {
+			packet.DestinationPort = uint16(*pc.Spec.Packet.TransportHeader.TCP.DstPort)
+		}
 		if pc.Spec.Packet.TransportHeader.TCP.Flags != nil {
 			packet.TCPFlags = uint8(*pc.Spec.Packet.TransportHeader.TCP.Flags)
 		}
 	} else if pc.Spec.Packet.TransportHeader.UDP != nil {
-		packet.SourcePort = uint16(pc.Spec.Packet.TransportHeader.UDP.SrcPort)
-		packet.DestinationPort = uint16(pc.Spec.Packet.TransportHeader.UDP.DstPort)
+		if pc.Spec.Packet.TransportHeader.UDP.SrcPort != nil {
+			packet.SourcePort = uint16(*pc.Spec.Packet.TransportHeader.UDP.SrcPort)
+		}
+		if pc.Spec.Packet.TransportHeader.UDP.DstPort != nil {
+			packet.DestinationPort = uint16(*pc.Spec.Packet.TransportHeader.UDP.DstPort)
+		}
 	}
-
-	proto, err := parseTargetProto(pc.Spec.Packet)
-	if err != nil {
-		return nil, err
-	}
-	packet.IPProto = proto
+	packet.IPProto = parseTargetProto(pc.Spec.Packet)
 	return packet, nil
 }
 
-func parseTargetProto(packet *crdv1alpha1.Packet) (uint8, error) {
-	var ipProto uint8
-	isIPv6 := packet.IPFamily == v1.IPv6Protocol
-
-	if packet.TransportHeader.TCP != nil {
-		ipProto = protocol.Type_TCP
-	} else if packet.TransportHeader.UDP != nil {
-		ipProto = protocol.Type_UDP
-	} else {
-		ipProto = protocol.Type_ICMP
-		if isIPv6 {
-			ipProto = protocol.Type_IPv6ICMP
-		}
-	}
-
+func parseTargetProto(packet *crdv1alpha1.Packet) uint8 {
 	inputProto := packet.Protocol
+	if inputProto == nil {
+		return protocol.Type_ICMP
+	}
+	if inputProto.Type == intstr.Int {
+		return uint8(inputProto.IntVal)
+	}
+
 	if inputProto.StrVal == "TCP" {
-		inputProto = &intstr.IntOrString{Type: intstr.Int, IntVal: protocol.Type_TCP}
+		return protocol.Type_TCP
 	} else if inputProto.StrVal == "ICMP" {
-		inputProto = &intstr.IntOrString{Type: intstr.Int, IntVal: protocol.Type_ICMP}
+		return protocol.Type_ICMP
 	} else if inputProto.StrVal == "UDP" {
-		inputProto = &intstr.IntOrString{Type: intstr.Int, IntVal: protocol.Type_UDP}
+		return protocol.Type_UDP
 	} else {
-		inputProto = &intstr.IntOrString{Type: intstr.Int, IntVal: protocol.Type_IPv6ICMP}
+		return protocol.Type_IPv6ICMP
 	}
-
-	if inputProto.IntVal != int32(ipProto) {
-		return 0, errors.New("Unmatch protocol settings in Packet between transportHeader and protocol")
-	}
-
-	return ipProto, nil
 }
 
 func (c *Controller) syncPacketCapture(pcName string) error {

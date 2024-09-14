@@ -256,7 +256,7 @@ func TestHandlePacketCapturePacketIn(t *testing.T) {
 				// check target num in status
 				pc, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), tt.expectedPC.Name, metav1.GetOptions{})
 				require.Nil(t, err)
-				assert.Equal(t, tt.expectedNum, pc.Status.NumCapturedPackets)
+				assert.Equal(t, tt.expectedNum, *pc.Status.NumCapturedPackets)
 			} else {
 				assert.Equal(t, tt.expectedErrStr, err.Error())
 			}
