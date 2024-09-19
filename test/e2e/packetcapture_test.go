@@ -619,12 +619,14 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 		}
 	}
 	captured := pc.Status.NumCapturedPackets
-	if captured == nil && tc.expectedNum != 0 || *captured != tc.expectedNum {
+	if captured == nil || *captured != tc.expectedNum {
 		got := "nil"
 		if captured != nil {
 			got = string(*captured)
 		}
-		t.Fatalf("Error: PacketCapture captured packets count should be %v, but got %v", tc.expectedNum, got)
+		if captured != nil || tc.expectedNum != 0 {
+			t.Fatalf("Error: PacketCapture captured packets count should be %v, but got %v", tc.expectedNum, got)
+		}
 	}
 
 }
