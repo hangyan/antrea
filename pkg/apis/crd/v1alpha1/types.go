@@ -359,23 +359,23 @@ type BGPPeer struct {
 // Source describes the source spec of the packetcapture.
 type Source struct {
 	// Namespace is the source Namespace.
-	Namespace string `json:"namespace"`
+	Namespace string `json:"namespace,omitempty"`
 	// Pod is the source Pod.
-	Pod string `json:"pod"`
+	Pod string `json:"pod,omitempty"`
 	// IP is the source IPv4 or IPv6 address.
-	IP string `json:"ip"`
+	IP *string `json:"ip,omitempty"`
 }
 
 // Destination describes the destination spec of the PacketCapture.
 type Destination struct {
 	// Namespace is the destination Namespace.
-	Namespace string `json:"namespace"`
+	Namespace string `json:"namespace,omitempty"`
 	// Pod is the destination Pod, exclusive with destination Service.
-	Pod string `json:"pod"`
+	Pod string `json:"pod,omitempty"`
 	// Service is the destination Service, exclusive with destination Pod.
-	Service string `json:"service"`
+	Service string `json:"service,omitempty"`
 	// IP is the destination IPv4 or IPv6 address.
-	IP string `json:"ip"`
+	IP string `json:"ip,omitempty"`
 }
 
 // TransportHeader describes spec of a TransportHeader.
