@@ -363,7 +363,7 @@ type Source struct {
 	// Pod is the source Pod.
 	Pod string `json:"pod,omitempty"`
 	// IP is the source IPv4 or IPv6 address.
-	IP *string `json:"ip,omitempty"`
+	IP string `json:"ip,omitempty"`
 }
 
 // Destination describes the destination spec of the PacketCapture.
