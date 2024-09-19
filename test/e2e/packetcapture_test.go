@@ -248,6 +248,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &tcpProto,
+						IPFamily: v1.IPv4Protocol,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								DstPort: &testServerPort,
@@ -287,6 +288,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &tcpProto,
+						IPFamily: v1.IPv4Protocol,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								DstPort: &testServerPort,

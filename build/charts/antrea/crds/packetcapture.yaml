@@ -124,6 +124,7 @@ spec:
                       properties:
                         udp:
                           type: object
+                          nullable: true
                           properties:
                             srcPort:
                               type: integer
@@ -135,6 +136,7 @@ spec:
                               maximum: 65535
                         tcp:
                           type: object
+                          nullable: true
                           properties:
                             srcPort:
                               type: integer
