@@ -116,14 +116,10 @@ spec:
                     transportHeader:
                       type: object
                       nullable: true
-                      oneOf:
-                        - required:
-                          - tcp
-                        - required:
-                          - udp
                       properties:
                         udp:
                           type: object
+                          nullable: true
                           properties:
                             srcPort:
                               type: integer
@@ -135,6 +131,7 @@ spec:
                               maximum: 65535
                         tcp:
                           type: object
+                          nullable: true
                           properties:
                             srcPort:
                               type: integer

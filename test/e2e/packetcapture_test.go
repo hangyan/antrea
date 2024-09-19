@@ -248,6 +248,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &tcpProto,
+						IPFamily: v1.IPv4Protocol,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								DstPort: &testServerPort,
@@ -287,6 +288,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &tcpProto,
+						IPFamily: v1.IPv4Protocol,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								DstPort: &testServerPort,
@@ -365,6 +367,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &tcpProto,
+						IPFamily: v1.IPv4Protocol,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
 								DstPort: &testServerPort,
@@ -403,6 +406,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &udpProto,
+						IPFamily: v1.IPv4Protocol,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							UDP: &crdv1alpha1.UDPHeader{
 								DstPort: &testServerPort,
@@ -441,6 +445,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &icmpProto,
+						IPFamily: v1.IPv4Protocol,
 					},
 				},
 			},
@@ -619,7 +624,9 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 		if captured != nil {
 			got = string(*captured)
 		}
-		t.Fatalf("Error: PacketCapture captured packets count should be %v, but got %v", tc.expectedNum, got)
+		if captured != nil || tc.expectedNum != 0 {
+			t.Fatalf("Error: PacketCapture captured packets count should be %v, but got %v", tc.expectedNum, got)
+		}
 	}
 
 }
