@@ -619,7 +619,7 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 		}
 	}
 	captured := pc.Status.NumCapturedPackets
-	if captured == nil || *captured != tc.expectedNum {
+	if captured == nil && tc.expectedNum != 0 || *captured != tc.expectedNum {
 		got := "nil"
 		if captured != nil {
 			got = string(*captured)
