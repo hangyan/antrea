@@ -116,11 +116,6 @@ spec:
                     transportHeader:
                       type: object
                       nullable: true
-                      oneOf:
-                        - required:
-                          - tcp
-                        - required:
-                          - udp
                       properties:
                         udp:
                           type: object

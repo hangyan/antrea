@@ -409,7 +409,7 @@ type Packet struct {
 	// Protocol represents the transport protocol. default to ICMP(1). Other
 	// possible choices are: TCP(6), UDP(17).
 	Protocol        *intstr.IntOrString `json:"protocol,omitempty"`
-	TransportHeader TransportHeader     `json:"transportHeader,omitempty"`
+	TransportHeader TransportHeader     `json:"transportHeader"`
 }
 
 // PacketCaptureFirstNConfig contains the config for the FirstN type capture. The only supported parameter is
