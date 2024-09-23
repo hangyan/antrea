@@ -113,6 +113,7 @@ func (f *featurePacketCapture) genFlows(dataplaneTag uint8,
 				flowBuilder = flowBuilder.MatchDstIP(packet.DestinationIP)
 			}
 		} else {
+			// handle pod -> svc case:
 			// generate flows to endpoints.
 			for _, epPacket := range endpointPackets {
 				tmpFlowBuilder := ConntrackStateTable.ofTable.BuildFlow(priorityHigh).
@@ -126,6 +127,24 @@ func (f *featurePacketCapture) genFlows(dataplaneTag uint8,
 				flow := matchTransportHeader(packet, tmpFlowBuilder, endpointPackets).Done()
 				flows = append(flows, flow)
 			}
+
+			// capture the first tracked packet for svc.
+			for _, ipProtocol := range f.ipProtocols {
+				tmpFlowBuilder := ConntrackStateTable.ofTable.BuildFlow(priorityHigh).
+					Cookie(cookieID).
+					MatchInPort(ofPort).
+					MatchProtocol(ipProtocol).
+					MatchCTStateNew(true).
+					MatchCTStateTrk(true).
+					Action().LoadRegMark(RewriteMACRegMark).
+					Action().LoadToRegField(PacketCaptureMark, tag).
+					SetHardTimeout(timeout).
+					Action().GotoStage(stagePreRouting)
+				tmpFlowBuilder.MatchDstIP(packet.DestinationIP)
+				tmpFlowBuilder = matchTransportHeader(packet, tmpFlowBuilder, nil)
+				flows = append(flows, tmpFlowBuilder.Done())
+			}
+
 		}
 	} else {
 		flowBuilder = L2ForwardingCalcTable.ofTable.BuildFlow(priorityHigh).
@@ -139,25 +158,6 @@ func (f *featurePacketCapture) genFlows(dataplaneTag uint8,
 			Action().GotoStage(stageIngressSecurity)
 		if packet.SourceIP != nil {
 			flowBuilder = flowBuilder.MatchSrcIP(packet.SourceIP)
-		}
-	}
-
-	// for sender only case, capture the first tracked packet for svc.
-	if senderOnly {
-		for _, ipProtocol := range f.ipProtocols {
-			tmpFlowBuilder := ConntrackStateTable.ofTable.BuildFlow(priorityHigh).
-				Cookie(cookieID).
-				MatchInPort(ofPort).
-				MatchProtocol(ipProtocol).
-				MatchCTStateNew(true).
-				MatchCTStateTrk(true).
-				Action().LoadRegMark(RewriteMACRegMark).
-				Action().LoadToRegField(PacketCaptureMark, tag).
-				SetHardTimeout(timeout).
-				Action().GotoStage(stagePreRouting)
-			tmpFlowBuilder.MatchDstIP(packet.DestinationIP)
-			tmpFlowBuilder = matchTransportHeader(packet, tmpFlowBuilder, nil)
-			flows = append(flows, tmpFlowBuilder.Done())
 		}
 	}
 
