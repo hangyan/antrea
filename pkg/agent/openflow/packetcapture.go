@@ -121,7 +121,7 @@ func (f *featurePacketCapture) genFlows(dataplaneTag uint8,
 					MatchCTStateTrk(true).
 					Action().LoadToRegField(PacketCaptureMark, tag).
 					SetHardTimeout(timeout).
-					Action().GotoStage(stagePreRouting)
+					Action().GotoStage(stageEgressSecurity)
 				tmpFlowBuilder.MatchDstIP(epPacket.DestinationIP)
 				flow := matchTransportHeader(packet, tmpFlowBuilder, endpointPackets).Done()
 				flows = append(flows, flow)
