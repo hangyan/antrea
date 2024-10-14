@@ -465,7 +465,7 @@ type PacketCaptureSpec struct {
 	Destination   Destination   `json:"destination"`
 	Packet        *Packet       `json:"packet,omitempty"`
 	// FileServer specifies the sftp url config for the fileServer. Captured packets will be uploaded to this server.
-	FileServer BundleFileServer `json:"fileServer"`
+	FileServer *BundleFileServer `json:"fileServer,omitempty"`
 }
 
 type PacketCaptureStatus struct {
@@ -475,8 +475,9 @@ type PacketCaptureStatus struct {
 	// NumCapturedPackets records how many packets have been captured. If it reaches the target number, the capture
 	// can be considered as finished.
 	NumCapturedPackets *int32 `json:"numCapturedPackets,omitempty"`
-	// PacketsFileName is the file name where the captured packets are temporarily cached, also the file name stored in the configured fileserver. The temporary file in the local cache will be removed after the PacketCapture is deleted.
-	PacketsFileName string `json:"packetsFileName"`
+	// PacketsFilePath is the file path where the captured packets are stored. The format is: "<antrea-agent-pod-name>:<path>".
+	// If `.spec.FileServer` is present, this file will also be uploaded to the targeted location.
+	PacketsFilePath string `json:"packetsFileName"`
 	// StartTime is the time when this capture sessions starts.
 	StartTime *metav1.Time `json:"startTime,omitempty"`
 }

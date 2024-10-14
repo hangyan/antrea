@@ -704,7 +704,11 @@ func (in *PacketCaptureSpec) DeepCopyInto(out *PacketCaptureSpec) {
 		*out = new(Packet)
 		(*in).DeepCopyInto(*out)
 	}
-	out.FileServer = in.FileServer
+	if in.FileServer != nil {
+		in, out := &in.FileServer, &out.FileServer
+		*out = new(BundleFileServer)
+		**out = **in
+	}
 	return
 }
 

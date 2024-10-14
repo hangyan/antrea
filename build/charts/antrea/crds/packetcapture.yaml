@@ -47,7 +47,6 @@ spec:
             spec:
               type: object
               required:
-                - fileServer
                 - source
                 - captureConfig
                 - destination
@@ -186,7 +185,7 @@ spec:
                   type: string
                 numCapturedPackets:
                   type: integer
-                packetsFileName:
+                packetsFilePath:
                   type: string
       subresources:
         status: {}
