@@ -2988,11 +2988,6 @@ spec:
                       x-kubernetes-int-or-string: true
                     transportHeader:
                       type: object
-                      oneOf:
-                        - required:
-                          - tcp
-                        - required:
-                          - udp
                       properties:
                         udp:
                           type: object
