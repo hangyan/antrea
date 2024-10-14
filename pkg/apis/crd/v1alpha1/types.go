@@ -477,7 +477,7 @@ type PacketCaptureStatus struct {
 	NumCapturedPackets *int32 `json:"numCapturedPackets,omitempty"`
 	// PacketsFilePath is the file path where the captured packets are stored. The format is: "<antrea-agent-pod-name>:<path>".
 	// If `.spec.FileServer` is present, this file will also be uploaded to the targeted location.
-	PacketsFilePath string `json:"packetsFileName"`
+	PacketsFilePath string `json:"packetsFilePath"`
 	// StartTime is the time when this capture sessions starts.
 	StartTime *metav1.Time `json:"startTime,omitempty"`
 }
