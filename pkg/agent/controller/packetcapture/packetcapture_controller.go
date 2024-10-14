@@ -322,15 +322,15 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 	senderOnly := false
 	var pod, ns string
 
-	if pc.Spec.Source.Pod != "" {
-		pod = pc.Spec.Source.Pod
-		ns = pc.Spec.Source.Namespace
-		if pc.Spec.Destination.Pod == "" {
+	if pc.Spec.Source.Pod != nil {
+		pod = pc.Spec.Source.Pod.Name
+		ns = pc.Spec.Source.Pod.Namespace
+		if pc.Spec.Destination.Pod == nil {
 			senderOnly = true
 		}
 	} else {
-		pod = pc.Spec.Destination.Pod
-		ns = pc.Spec.Destination.Namespace
+		pod = pc.Spec.Destination.Pod.Name
+		ns = pc.Spec.Destination.Pod.Namespace
 		receiverOnly = true
 	}
 
@@ -349,7 +349,7 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 	ofPort = uint32(podInterfaces[0].OFPort)
 	senderPacket = packet
 	klog.V(2).InfoS("PacketCapture sender packet", "packet", *packet)
-	if senderOnly && pc.Spec.Destination.Service != "" {
+	if senderOnly && pc.Spec.Destination.Service != nil {
 		endpointPackets, err = c.genEndpointMatchPackets(pc)
 		if err != nil {
 			return fmt.Errorf("couldn't generate endpoint match packets: %w", err)
@@ -404,7 +404,7 @@ func (c *Controller) genEndpointMatchPackets(pc *crdv1alpha1.PacketCapture) ([]b
 		port = *pc.Spec.Packet.TransportHeader.UDP.DstPort
 	}
 	var packets []binding.Packet
-	dstSvc, err := c.serviceLister.Services(pc.Spec.Destination.Namespace).Get(pc.Spec.Destination.Service)
+	dstSvc, err := c.serviceLister.Services(pc.Spec.Destination.Service.Namespace).Get(pc.Spec.Destination.Service.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +415,7 @@ func (c *Controller) genEndpointMatchPackets(pc *crdv1alpha1.PacketCapture) ([]b
 			}
 		}
 	}
-	dstEndpoint, err := c.endpointLister.Endpoints(pc.Spec.Destination.Namespace).Get(pc.Spec.Destination.Service)
+	dstEndpoint, err := c.endpointLister.Endpoints(pc.Spec.Destination.Service.Namespace).Get(pc.Spec.Destination.Service.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -439,14 +439,14 @@ func (c *Controller) preparePacket(pc *crdv1alpha1.PacketCapture, intf *interfac
 	packet.IsIPv6 = pc.Spec.Packet.IPFamily == v1.IPv6Protocol
 
 	if receiverOnly {
-		if pc.Spec.Source.IP != "" {
-			packet.SourceIP = net.ParseIP(pc.Spec.Source.IP)
+		if pc.Spec.Source.IP != nil {
+			packet.SourceIP = net.ParseIP(*pc.Spec.Source.IP)
 		}
 		packet.DestinationMAC = intf.MAC
-	} else if pc.Spec.Destination.IP != "" {
-		packet.DestinationIP = net.ParseIP(pc.Spec.Destination.IP)
-	} else if pc.Spec.Destination.Pod != "" {
-		dstPodInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pc.Spec.Destination.Pod, pc.Spec.Destination.Namespace)
+	} else if pc.Spec.Destination.IP != nil {
+		packet.DestinationIP = net.ParseIP(*pc.Spec.Destination.IP)
+	} else if pc.Spec.Destination.Pod != nil {
+		dstPodInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pc.Spec.Destination.Pod.Name, pc.Spec.Destination.Pod.Namespace)
 		if len(dstPodInterfaces) > 0 {
 			if packet.IsIPv6 {
 				packet.DestinationIP = dstPodInterfaces[0].GetIPv6Addr()
@@ -454,9 +454,9 @@ func (c *Controller) preparePacket(pc *crdv1alpha1.PacketCapture, intf *interfac
 				packet.DestinationIP = dstPodInterfaces[0].GetIPv4Addr()
 			}
 		} else {
-			dstPod, err := c.kubeClient.CoreV1().Pods(pc.Spec.Destination.Namespace).Get(context.TODO(), pc.Spec.Destination.Pod, metav1.GetOptions{})
+			dstPod, err := c.kubeClient.CoreV1().Pods(pc.Spec.Destination.Pod.Namespace).Get(context.TODO(), pc.Spec.Destination.Pod.Name, metav1.GetOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to get the destination pod %s/%s: %v", pc.Spec.Destination.Namespace, pc.Spec.Destination.Pod, err)
+				return nil, fmt.Errorf("failed to get the destination pod %s/%s: %v", pc.Spec.Destination.Pod.Namespace, pc.Spec.Destination.Pod.Name, err)
 			}
 			podIPs := make([]net.IP, len(dstPod.Status.PodIPs))
 			for i, ip := range dstPod.Status.PodIPs {
@@ -474,10 +474,10 @@ func (c *Controller) preparePacket(pc *crdv1alpha1.PacketCapture, intf *interfac
 			}
 			return nil, errors.New("destination Pod does not have an IPv4 address")
 		}
-	} else if pc.Spec.Destination.Service != "" {
-		dstSvc, err := c.serviceLister.Services(pc.Spec.Destination.Namespace).Get(pc.Spec.Destination.Service)
+	} else if pc.Spec.Destination.Service != nil {
+		dstSvc, err := c.serviceLister.Services(pc.Spec.Destination.Service.Namespace).Get(pc.Spec.Destination.Service.Name)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get the destination service %s/%s: %v", pc.Spec.Destination.Namespace, pc.Spec.Destination.Service, err)
+			return nil, fmt.Errorf("failed to get the destination service %s/%s: %v", pc.Spec.Destination.Service.Namespace, pc.Spec.Destination.Service.Name, err)
 		}
 		if dstSvc.Spec.ClusterIP == "" {
 			return nil, errors.New("destination Service does not have a ClusterIP")
@@ -662,7 +662,7 @@ func (c *Controller) updatePacketCaptureStatus(pc *crdv1alpha1.PacketCapture, ph
 		patchData.Status.NumCapturedPackets = &numCapturedPackets
 	}
 	if phase == crdv1alpha1.PacketCaptureSucceeded {
-		patchData.Status.PacketsFileName = c.generatePacketsPathForServer(string(pc.UID))
+		patchData.Status.PacketsFilePath = c.generatePacketsPathForServer(string(pc.UID))
 	}
 	payloads, _ := json.Marshal(patchData)
 	_, err := c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), pc.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")

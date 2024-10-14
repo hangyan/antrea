@@ -53,6 +53,8 @@ import (
 var (
 	pod1IPv4           = "192.168.10.10"
 	pod2IPv4           = "192.168.11.10"
+	ipv4               = "192.168.12.4"
+	ipv6               = "2001:db8::68"
 	service1IPv4       = "10.96.0.10"
 	dstIPv4            = "192.168.99.99"
 	pod1MAC, _         = net.ParseMAC("aa:bb:cc:dd:ee:0f")
@@ -193,12 +195,16 @@ func TestErrPacketCaptureCRD(t *testing.T) {
 		},
 		Spec: crdv1alpha1.PacketCaptureSpec{
 			Source: crdv1alpha1.Source{
-				Namespace: pod1.Namespace,
-				Pod:       pod1.Name,
+				Pod: &crdv1alpha1.PodReference{
+					Namespace: pod1.Namespace,
+					Name:      pod1.Name,
+				},
 			},
 			Destination: crdv1alpha1.Destination{
-				Namespace: pod2.Namespace,
-				Pod:       pod2.Name,
+				Pod: &crdv1alpha1.PodReference{
+					Namespace: pod2.Namespace,
+					Name:      pod2.Name,
+				},
 			},
 		},
 		Status: crdv1alpha1.PacketCaptureStatus{
@@ -231,8 +237,10 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 				},
 			},
@@ -244,12 +252,16 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc3", UID: "uid3"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod2.Namespace,
-						Pod:       pod2.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
@@ -277,11 +289,13 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc4", UID: "uid4"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						IP: "192.168.12.4",
+						IP: &ipv4,
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						IPFamily: v1.IPv4Protocol,
@@ -302,12 +316,16 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc4", UID: "uid4"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod2.Namespace,
-						Pod:       pod2.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						IPFamily: v1.IPv6Protocol,
@@ -323,11 +341,13 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc5", UID: "uid5"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						IP: "2001:db8::68",
+						IP: &ipv6,
 					},
 					Packet: &crdv1alpha1.Packet{
 						IPFamily: v1.IPv6Protocol,
@@ -347,12 +367,16 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc6", UID: "uid6"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod2.Namespace,
-						Pod:       pod2.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
@@ -378,12 +402,16 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc7", UID: "uid7"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod2.Namespace,
-						Pod:       pod2.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "UDP"},
@@ -409,12 +437,16 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc8", UID: "uid8"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod2.Namespace,
-						Pod:       pod2.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "ICMP"},
@@ -432,8 +464,10 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc11", UID: "uid11"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Destination: crdv1alpha1.Destination{
-						Pod:       "unknown pod",
-						Namespace: "default",
+						Pod: &crdv1alpha1.PodReference{
+							Name:      "unknown pod",
+							Namespace: "default",
+						},
 					},
 				},
 			},
@@ -445,12 +479,16 @@ func TestPreparePacket(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc12", UID: "uid12"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Service:   service1.Name,
-						Namespace: service1.Namespace,
+						Service: &crdv1alpha1.ServiceReference{
+							Name:      service1.Name,
+							Namespace: service1.Namespace,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
@@ -526,12 +564,16 @@ func TestSyncPacketCapture(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod2.Namespace,
-						Pod:       pod2.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
 				},
 			},
@@ -551,12 +593,16 @@ func TestSyncPacketCapture(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: types.UID(testUID)},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod2.Namespace,
-						Pod:       pod2.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
@@ -619,12 +665,16 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 			Spec: crdv1alpha1.PacketCaptureSpec{
 				Source: crdv1alpha1.Source{
-					Namespace: pod1.Namespace,
-					Pod:       pod1.Name,
+					Pod: &crdv1alpha1.PodReference{
+						Namespace: pod1.Namespace,
+						Name:      pod1.Name,
+					},
 				},
 				Destination: crdv1alpha1.Destination{
-					Namespace: pod2.Namespace,
-					Pod:       pod2.Name,
+					Pod: &crdv1alpha1.PodReference{
+						Namespace: pod2.Namespace,
+						Name:      pod2.Name,
+					},
 				},
 				CaptureConfig: crdv1alpha1.CaptureConfig{
 					FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
@@ -668,12 +718,16 @@ func TestProcessPacketCaptureItem(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 			Spec: crdv1alpha1.PacketCaptureSpec{
 				Source: crdv1alpha1.Source{
-					Namespace: pod1.Namespace,
-					Pod:       pod1.Name,
+					Pod: &crdv1alpha1.PodReference{
+						Namespace: pod1.Namespace,
+						Name:      pod1.Name,
+					},
 				},
 				Destination: crdv1alpha1.Destination{
-					Namespace: pod2.Namespace,
-					Pod:       pod2.Name,
+					Pod: &crdv1alpha1.PodReference{
+						Namespace: pod2.Namespace,
+						Name:      pod2.Name,
+					},
 				},
 				CaptureConfig: crdv1alpha1.CaptureConfig{
 					FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
@@ -726,12 +780,16 @@ func TestStartPacketCapture(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod2.Namespace,
-						Pod:       pod2.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
@@ -770,11 +828,13 @@ func TestStartPacketCapture(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid2"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						IP: dstIPv4,
+						IP: &dstIPv4,
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
@@ -848,12 +908,16 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid2"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod1.Namespace,
-						Service:   "svc1",
+						Service: &crdv1alpha1.ServiceReference{
+							Name:      "svc1",
+							Namespace: pod1.Namespace,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
@@ -891,12 +955,16 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod1.Namespace,
-						Service:   "svc1",
+						Service: &crdv1alpha1.ServiceReference{
+							Namespace: pod1.Namespace,
+							Name:      "svc1",
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
@@ -968,12 +1036,16 @@ func TestPrepareEndpointsPackets(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: pod1.Namespace,
-						Pod:       pod1.Name,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: pod1.Namespace,
-						Service:   "svc1",
+						Service: &crdv1alpha1.ServiceReference{
+							Name:      "svc1",
+							Namespace: pod1.Namespace,
+						},
 					},
 					Packet: &crdv1alpha1.Packet{
 						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},

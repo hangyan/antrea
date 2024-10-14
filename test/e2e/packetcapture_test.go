@@ -221,6 +221,8 @@ func testPacketCapture(t *testing.T, data *TestData) {
 	// Containerd configures port asynchronously, which could cause execution time of installing flow longer than docker.
 	time.Sleep(time.Second * 1)
 
+	tcpServerPodIP := podIPs[tcpServerPodName].IPv4.String()
+
 	testcases := []pcTestCase{
 		{
 			name:      "to-ipv4-ip",
@@ -232,18 +234,20 @@ func testPacketCapture(t *testing.T, data *TestData) {
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: data.testNamespace,
-						Pod:       pcToolboxPodName,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      pcToolboxPodName,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						IP: podIPs[tcpServerPodName].IPv4.String(),
+						IP: &tcpServerPodIP,
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
 							Number: 5,
 						},
 					},
-					FileServer: crdv1alpha1.BundleFileServer{
+					FileServer: &crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -271,19 +275,23 @@ func testPacketCapture(t *testing.T, data *TestData) {
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: data.testNamespace,
-						Pod:       pcToolboxPodName,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      pcToolboxPodName,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Service:   dstServiceName,
-						Namespace: data.testNamespace,
+						Service: &crdv1alpha1.ServiceReference{
+							Name:      dstServiceName,
+							Namespace: data.testNamespace,
+						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
 							Number: 5,
 						},
 					},
-					FileServer: crdv1alpha1.BundleFileServer{
+					FileServer: &crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -350,19 +358,23 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: data.testNamespace,
-						Pod:       pcToolboxPodName,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      pcToolboxPodName,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: data.testNamespace,
-						Pod:       tcpServerPodName,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      tcpServerPodName,
+						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
 							Number: 5,
 						},
 					},
-					FileServer: crdv1alpha1.BundleFileServer{
+					FileServer: &crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -389,19 +401,23 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: data.testNamespace,
-						Pod:       pcToolboxPodName,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      pcToolboxPodName,
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: data.testNamespace,
-						Pod:       udpServerPodName,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      udpServerPodName,
+						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
 							Number: 5,
 						},
 					},
-					FileServer: crdv1alpha1.BundleFileServer{
+					FileServer: &crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -428,19 +444,23 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: data.testNamespace,
-						Pod:       node1Pods[0],
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      node1Pods[0],
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: data.testNamespace,
-						Pod:       node1Pods[1],
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      node1Pods[1],
+						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
 							Number: 5,
 						},
 					},
-					FileServer: crdv1alpha1.BundleFileServer{
+					FileServer: &crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -462,19 +482,23 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: data.testNamespace,
-						Pod:       node1Pods[0],
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      node1Pods[0],
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: data.testNamespace,
-						Pod:       node1Pods[1],
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      node1Pods[1],
+						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
 							Number: 5,
 						},
 					},
-					FileServer: crdv1alpha1.BundleFileServer{
+					FileServer: &crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -497,19 +521,23 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
-						Namespace: data.testNamespace,
-						Pod:       node1Pods[0],
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      node1Pods[0],
+						},
 					},
 					Destination: crdv1alpha1.Destination{
-						Namespace: data.testNamespace,
-						Pod:       nonExistPodName,
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      nonExistPodName,
+						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
 							Number: 5,
 						},
 					},
-					FileServer: crdv1alpha1.BundleFileServer{
+					FileServer: &crdv1alpha1.BundleFileServer{
 						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
 					},
 				},
@@ -547,7 +575,10 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 	// wait for toolbox
 	waitForPodIPs(t, data, []PodInfo{{pcToolboxPodName, getOSString(), "", data.testNamespace}})
 
-	dstPodName := tc.pc.Spec.Destination.Pod
+	dstPodName := ""
+	if tc.pc.Spec.Destination.Pod != nil {
+		dstPodName = tc.pc.Spec.Destination.Pod.Name
+	}
 	var dstPodIPs *PodIPs
 	if dstPodName != nonExistPodName && dstPodName != "" {
 		// wait for pods to be ready first , or the pc will skip install flow
@@ -564,16 +595,16 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 		}
 	}()
 
-	if tc.pc.Spec.Destination.Pod != nonExistPodName {
+	if dstPodName != nonExistPodName {
 		srcPod := tc.srcPod
-		if dstIP := tc.pc.Spec.Destination.IP; dstIP != "" {
-			ip := net.ParseIP(dstIP)
+		if dstIP := tc.pc.Spec.Destination.IP; dstIP != nil {
+			ip := net.ParseIP(*dstIP)
 			if ip.To4() != nil {
 				dstPodIPs = &PodIPs{IPv4: &ip}
 			} else {
 				dstPodIPs = &PodIPs{IPv6: &ip}
 			}
-		} else if tc.pc.Spec.Destination.Service != "" {
+		} else if tc.pc.Spec.Destination.Service != nil {
 			ip := net.ParseIP(dstServiceIP)
 			if ip.To4() != nil {
 				dstPodIPs = &PodIPs{IPv4: &ip}

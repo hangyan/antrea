@@ -120,7 +120,7 @@ func generatePacketCapture(name string) *crdv1alpha1.PacketCapture {
 					Number: 5,
 				},
 			},
-			FileServer: crdv1alpha1.BundleFileServer{
+			FileServer: &crdv1alpha1.BundleFileServer{
 				URL: testSFTPUrl,
 			},
 		},
