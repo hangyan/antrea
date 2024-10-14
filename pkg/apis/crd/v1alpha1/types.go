@@ -356,6 +356,7 @@ type BGPPeer struct {
 	GracefulRestartTimeSeconds *int32 `json:"gracefulRestartTimeSeconds,omitempty"`
 }
 
+<<<<<<< HEAD
 type PodReference struct {
 	Namespace string
 	Name      string
@@ -372,16 +373,37 @@ type Source struct {
 	Pod *PodReference `json:"pod,omitempty"`
 	// IP is the source IPv4 or IPv6 address.
 	IP *string `json:"ip,omitempty"`
+=======
+// Source describes the source spec of the packetcapture.
+type Source struct {
+	// Namespace is the source Namespace.
+	Namespace string `json:"namespace,omitempty"`
+	// Pod is the source Pod.
+	Pod string `json:"pod,omitempty"`
+	// IP is the source IPv4 or IPv6 address.
+	IP string `json:"ip,omitempty"`
+>>>>>>> 921780ba9 (Add packetcapture feature)
 }
 
 // Destination describes the destination spec of the PacketCapture.
 type Destination struct {
+<<<<<<< HEAD
 	// Pod is the destination Pod, exclusive with destination Service.
 	Pod *PodReference `json:"pod,omitempty"`
 	// Service is the destination Service, exclusive with destination Pod.
 	Service *ServiceReference `json:"service,omitempty"`
 	// IP is the destination IPv4 or IPv6 address.
 	IP *string `json:"ip,omitempty"`
+=======
+	// Namespace is the destination Namespace.
+	Namespace string `json:"namespace,omitempty"`
+	// Pod is the destination Pod, exclusive with destination Service.
+	Pod string `json:"pod,omitempty"`
+	// Service is the destination Service, exclusive with destination Pod.
+	Service string `json:"service,omitempty"`
+	// IP is the destination IPv4 or IPv6 address.
+	IP string `json:"ip,omitempty"`
+>>>>>>> 921780ba9 (Add packetcapture feature)
 }
 
 // TransportHeader describes spec of a TransportHeader.
@@ -411,8 +433,14 @@ type TCPHeader struct {
 // Packet includes header info.
 type Packet struct {
 	// IPFamily is the filter's IP family. Default to `IPv4`.
+<<<<<<< HEAD
 	IPFamily v1.IPFamily `json:"ipFamily,omitempty"`
 	// Protocol represents the transport protocol. Default is to not filter on protocol.
+=======
+	IPFamily v1.IPFamily `json:"ipFamily"`
+	// Protocol represents the transport protocol. default to ICMP(1). Other
+	// possible choices are: TCP(6), UDP(17).
+>>>>>>> 921780ba9 (Add packetcapture feature)
 	Protocol        *intstr.IntOrString `json:"protocol,omitempty"`
 	TransportHeader TransportHeader     `json:"transportHeader"`
 }

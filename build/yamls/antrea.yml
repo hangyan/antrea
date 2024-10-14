@@ -2917,7 +2917,6 @@ spec:
             spec:
               type: object
               required:
-                - fileServer
                 - source
                 - captureConfig
                 - destination
@@ -2931,11 +2930,19 @@ spec:
               properties:
                 source:
                   type: object
+                  oneOf:
+                    - required:
+                      - pod
+                    - required:
+                      - ip
                   properties:
                     pod:
-                      type: string
-                    namespace:
-                      type: string
+                      type: object
+                      properties:
+                        namespace:
+                          type: string
+                        name:
+                          type: string
                     ip:
                       type: string
                       oneOf:
@@ -2943,13 +2950,28 @@ spec:
                         - format: ipv6
                 destination:
                   type: object
+                  oneOf:
+                    - required:
+                      - pod
+                    - required:
+                      - ip
+                    - required:
+                      - service
                   properties:
                     pod:
-                      type: string
+                      type: object
+                      properties:
+                        namespace:
+                          type: string
+                        name:
+                          type: string
                     service:
-                      type: string
-                    namespace:
-                      type: string
+                      type: object
+                      properties:
+                        namespace:
+                          type: string
+                        name:
+                          type: string
                     ip:
                       type: string
                       oneOf:
@@ -2958,22 +2980,19 @@ spec:
                 packet:
                   type: object
                   properties:
-                    ipHeader:
-                      type: object
-                      properties:
-                        protocol:
-                          type: integer
-                          minimum: 0
-                          maximum: 255
-                    ipv6Header:
-                      type: object
-                      properties:
-                        nextHeader:
-                          type: integer
-                          minimum: 0
-                          maximum: 65535
+                    ipFamily:
+                      type: string
+                      enum: [IPv4, IPv6]
+                      default: IPv4
+                    protocol:
+                      x-kubernetes-int-or-string: true
                     transportHeader:
                       type: object
+                      oneOf:
+                        - required:
+                          - tcp
+                        - required:
+                          - udp
                       properties:
                         udp:
                           type: object
@@ -3005,6 +3024,7 @@ spec:
                   type: integer
                   minimum: 1
                   maximum: 300
+                  default: 60
                 captureConfig:
                   type: object
                   anyOf:
@@ -3035,9 +3055,8 @@ spec:
                   type: string
                 numCapturedPackets:
                   type: integer
-                packetsFileName:
+                packetsFilePath:
                   type: string
-
       subresources:
         status: {}
   scope: Cluster
@@ -3046,7 +3065,7 @@ spec:
     singular: packetcapture
     kind: PacketCapture
     shortNames:
-      - pcp
+      - pcap
 
 ---
 # Source: antrea/crds/supportbundlecollection.yaml
@@ -3922,8 +3941,11 @@ data:
     # be enabled, otherwise this flag will not take effect.
     #  CleanupStaleUDPSvcConntrack: true
 
-    # Enable traceflow which provides packet tracing feature to diagnose network issue.
+    # Enable Traceflow which provides packet tracing feature to diagnose network issue.
     #  Traceflow: true
+
+    # Enable PacketCapture feature which supports capturing packets to diagnose network issues.
+    #  PacketCapture: false
 
     # Enable NodePortLocal feature to make the Pods reachable externally through NodePort
     #  NodePortLocal: true
@@ -4509,6 +4531,14 @@ rules:
   - apiGroups:
       - ""
     resources:
+      - secrets
+    resourceNames:
+      - antrea-packetcapture-fileserver-auth
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
       - endpoints
       - services
       - namespaces
@@ -4627,6 +4657,20 @@ rules:
       - patch
       - create
       - delete
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetcaptures
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetcaptures/status
+    verbs:
+      - patch
   - apiGroups:
       - crd.antrea.io
     resources:
@@ -5320,7 +5364,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 8256bc0d365d60f16d0bdef14cf674be49d525ee1cd921e531f8bf7e521e1421
+        checksum/config: 2b4d82bcb825d50926115bad2125097f85aed424bfc49147444314cad8b7826a
       labels:
         app: antrea
         component: antrea-agent
@@ -5556,7 +5600,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 8256bc0d365d60f16d0bdef14cf674be49d525ee1cd921e531f8bf7e521e1421
+        checksum/config: 2b4d82bcb825d50926115bad2125097f85aed424bfc49147444314cad8b7826a
       labels:
         app: antrea
         component: antrea-controller
