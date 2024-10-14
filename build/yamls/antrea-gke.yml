@@ -2988,6 +2988,7 @@ spec:
                       x-kubernetes-int-or-string: true
                     transportHeader:
                       type: object
+                      nullable: true
                       oneOf:
                         - required:
                           - tcp

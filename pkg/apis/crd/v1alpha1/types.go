@@ -357,13 +357,13 @@ type BGPPeer struct {
 }
 
 type PodReference struct {
-	Namespace string
-	Name      string
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
 type ServiceReference struct {
-	Namespace string
-	Name      string
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
 // Source describes the source spec of the packetcapture.
