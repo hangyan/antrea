@@ -102,8 +102,8 @@ type packetCaptureState struct {
 	// tag is a node scope unique id for the PacketCapture. It will be written into ovs reg and parsed in packetIn handler
 	// to match with existing PacketCapture.
 	tag uint8
-	// shouldSyncPackets means this node will be responsible for doing the actual packet capture job.
-	shouldSyncPackets bool
+	// shouldCapturePackets means this node will be responsible for doing the actual packet capture job.
+	shouldCapturePackets bool
 	// numCapturedPackets record how many packets have been captured. Due to the RateLimiter,
 	// this maybe not be realtime data.
 	numCapturedPackets int32
@@ -242,15 +242,7 @@ func (c *Controller) updatePacketCapture(_, obj interface{}) {
 func (c *Controller) deletePacketCapture(obj interface{}) {
 	pc := obj.(*crdv1alpha1.PacketCapture)
 	klog.InfoS("Processing PacketCapture DELETE event", "name", pc.Name)
-	err := deletePcapngFile(string(pc.UID))
-	if err != nil {
-		klog.ErrorS(err, "Couldn't delete pcapng file")
-	}
 	c.enqueuePacketCapture(pc)
-}
-
-func deletePcapngFile(uid string) error {
-	return defaultFS.Remove(uidToPath(uid))
 }
 
 func uidToPath(uid string) string {
@@ -292,6 +284,9 @@ func (c *Controller) cleanupPacketCapture(pcName string) {
 			if err := pcState.pcapngFile.Close(); err != nil {
 				klog.ErrorS(err, "Error closing pcap file", "name", pcName)
 			}
+			if err := defaultFS.Remove(pcState.pcapngFile.Name()); err != nil {
+				klog.ErrorS(err, "Error deleting pcap file", "name", pcName)
+			}
 		}
 	}
 }
@@ -315,7 +310,6 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 		if err != nil {
 			c.cleanupPacketCapture(pc.Name)
 			c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureFailed, fmt.Sprintf("Node: %s, Error: %+v", c.nodeConfig.Name, err), 0)
-
 		}
 	}()
 	receiverOnly := false
@@ -335,20 +329,19 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 	}
 
 	podInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pod, ns)
-	pcState.shouldSyncPackets = len(podInterfaces) > 0
-	if !pcState.shouldSyncPackets {
+	pcState.shouldCapturePackets = len(podInterfaces) > 0
+	if !pcState.shouldCapturePackets {
 		return nil
 	}
-	var packet, senderPacket *binding.Packet
+	var senderPacket *binding.Packet
 	var endpointPackets []binding.Packet
 	var ofPort uint32
-	packet, err = c.preparePacket(pc, podInterfaces[0], receiverOnly)
+	senderPacket, err = c.preparePacket(pc, podInterfaces[0], receiverOnly)
 	if err != nil {
 		return err
 	}
 	ofPort = uint32(podInterfaces[0].OFPort)
-	senderPacket = packet
-	klog.V(2).InfoS("PacketCapture sender packet", "packet", *packet)
+	klog.V(2).InfoS("PacketCapture sender packet", "packet", *senderPacket)
 	if senderOnly && pc.Spec.Destination.Service != nil {
 		endpointPackets, err = c.genEndpointMatchPackets(pc)
 		if err != nil {
@@ -374,7 +367,7 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 	if err != nil {
 		return fmt.Errorf("couldn't initialize pcap writer: %w", err)
 	}
-	pcState.shouldSyncPackets = len(podInterfaces) > 0
+	pcState.shouldCapturePackets = len(podInterfaces) > 0
 	pcState.pcapngFile = file
 	pcState.pcapngWriter = writer
 	pcState.updateRateLimiter = rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1)

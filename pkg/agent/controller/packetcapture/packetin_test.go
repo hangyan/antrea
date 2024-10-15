@@ -102,7 +102,7 @@ func generateTestPCState(name string, pcapngFile afero.File, writer *pcapgo.NgWr
 		tag:                   testTag,
 		pcapngWriter:          writer,
 		pcapngFile:            pcapngFile,
-		shouldSyncPackets:     true,
+		shouldCapturePackets:  true,
 		updateRateLimiter:     rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1),
 	}
 }
