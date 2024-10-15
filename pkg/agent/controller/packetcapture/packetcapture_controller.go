@@ -643,6 +643,10 @@ func (c *Controller) initPacketCapture(pc *crdv1alpha1.PacketCapture) error {
 }
 
 func (c *Controller) updatePacketCaptureStatus(pc *crdv1alpha1.PacketCapture, phase crdv1alpha1.PacketCapturePhase, reason string, numCapturedPackets int32) error {
+	latestPC, err := c.packetCaptureLister.Get(pc.Name)
+	if err != nil {
+		return fmt.Errorf("get PacketCapture failed: %w", err)
+	}
 	type PacketCapture struct {
 		Status crdv1alpha1.PacketCaptureStatus `json:"status,omitempty"`
 	}
@@ -657,8 +661,9 @@ func (c *Controller) updatePacketCaptureStatus(pc *crdv1alpha1.PacketCapture, ph
 	if numCapturedPackets != 0 {
 		patchData.Status.NumCapturedPackets = &numCapturedPackets
 	}
+	patchData.Status.PacketsFilePath = latestPC.Status.PacketsFilePath
 	payloads, _ := json.Marshal(patchData)
-	_, err := c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), pc.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
+	_, err = c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), pc.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
 	return err
 }
 
