@@ -605,6 +605,10 @@ func getDefaultFileServerAuth() *crdv1alpha1.BundleServerAuthConfiguration {
 }
 
 func (c *Controller) uploadPackets(pc *crdv1alpha1.PacketCapture, outputFile afero.File) error {
+	if pc.Spec.FileServer == nil {
+		klog.V(2).Info("No fileserver info found in PacketCapture, skip upload packets file")
+		return nil
+	}
 	klog.V(2).InfoS("Uploading captured packets for PacketCapture", "name", pc.Name)
 	uploader, err := c.getUploaderByProtocol(sftpProtocol)
 	if err != nil {
@@ -618,7 +622,6 @@ func (c *Controller) uploadPackets(pc *crdv1alpha1.PacketCapture, outputFile afe
 	}
 	cfg := ftp.GenSSHClientConfig(serverAuth.BasicAuthentication.Username, serverAuth.BasicAuthentication.Password)
 	return uploader.Upload(pc.Spec.FileServer.URL, c.generatePacketsPathForServer(string(pc.UID)), cfg, outputFile)
-
 }
 
 // initPacketCapture mark the PacketCapture as running and allocate tag for it, then start the capture. the tag will
@@ -640,6 +643,10 @@ func (c *Controller) initPacketCapture(pc *crdv1alpha1.PacketCapture) error {
 }
 
 func (c *Controller) updatePacketCaptureStatus(pc *crdv1alpha1.PacketCapture, phase crdv1alpha1.PacketCapturePhase, reason string, numCapturedPackets int32) error {
+	latestPC, err := c.packetCaptureLister.Get(pc.Name)
+	if err != nil {
+		return fmt.Errorf("get PacketCapture failed: %w", err)
+	}
 	type PacketCapture struct {
 		Status crdv1alpha1.PacketCaptureStatus `json:"status,omitempty"`
 	}
@@ -654,11 +661,25 @@ func (c *Controller) updatePacketCaptureStatus(pc *crdv1alpha1.PacketCapture, ph
 	if numCapturedPackets != 0 {
 		patchData.Status.NumCapturedPackets = &numCapturedPackets
 	}
-	if phase == crdv1alpha1.PacketCaptureSucceeded {
-		patchData.Status.PacketsFilePath = c.generatePacketsPathForServer(string(pc.UID))
+	patchData.Status.PacketsFilePath = latestPC.Status.PacketsFilePath
+	payloads, _ := json.Marshal(patchData)
+	_, err = c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), pc.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
+	return err
+}
+
+// we also support only store the packets file in container, so add pod name here for users to
+// know which pod the file is located.
+func (c *Controller) setPacketsFilePathStatus(name, uid string) error {
+	type PacketCapture struct {
+		Status crdv1alpha1.PacketCaptureStatus `json:"status,omitempty"`
+	}
+	patchData := PacketCapture{
+		Status: crdv1alpha1.PacketCaptureStatus{
+			PacketsFilePath: os.Getenv("POD_NAME") + ":" + uidToPath(uid),
+		},
 	}
 	payloads, _ := json.Marshal(patchData)
-	_, err := c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), pc.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
+	_, err := c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
 	return err
 }
 

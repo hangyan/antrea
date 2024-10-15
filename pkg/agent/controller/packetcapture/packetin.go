@@ -63,6 +63,9 @@ func (c *Controller) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
 			if err := c.uploadPackets(pc, captureState.pcapngFile); err != nil {
 				return err
 			}
+			if err := c.setPacketsFilePathStatus(pc.Name, string(pc.UID)); err != nil {
+				return err
+			}
 		}
 		err = c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
 		if err != nil {
