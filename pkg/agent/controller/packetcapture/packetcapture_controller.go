@@ -657,13 +657,24 @@ func (c *Controller) updatePacketCaptureStatus(pc *crdv1alpha1.PacketCapture, ph
 	if numCapturedPackets != 0 {
 		patchData.Status.NumCapturedPackets = &numCapturedPackets
 	}
-	if phase == crdv1alpha1.PacketCaptureSucceeded {
-		// we also support only store the packets file in container, so add pod name here for users to
-		// know which pod the file is located.
-		patchData.Status.PacketsFilePath = os.Getenv("POD_NAME") + ":" + c.generatePacketsPathForServer(string(pc.UID))
-	}
 	payloads, _ := json.Marshal(patchData)
 	_, err := c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), pc.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
+	return err
+}
+
+// we also support only store the packets file in container, so add pod name here for users to
+// know which pod the file is located.
+func (c *Controller) setPacketsFilePathStatus(name, uid string) error {
+	type PacketCapture struct {
+		Status crdv1alpha1.PacketCaptureStatus `json:"status,omitempty"`
+	}
+	patchData := PacketCapture{
+		Status: crdv1alpha1.PacketCaptureStatus{
+			PacketsFilePath: os.Getenv("POD_NAME") + ":" + uidToPath(uid),
+		},
+	}
+	payloads, _ := json.Marshal(patchData)
+	_, err := c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
 	return err
 }
 
