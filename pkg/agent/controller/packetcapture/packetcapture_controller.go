@@ -104,11 +104,11 @@ type packetCaptureState struct {
 	tag uint8
 	// shouldSyncPackets means this node will be responsible for doing the actual packet capture job.
 	shouldSyncPackets bool
-	// numCapturedPackets record how many packets has been captured. Due to the RateLimiter,
+	// numCapturedPackets record how many packets have been captured. Due to the RateLimiter,
 	// this maybe not be realtime data.
 	numCapturedPackets int32
 	// maxNumCapturedPackets is target number limit for our capture. If numCapturedPackets=maxNumCapturedPackets, means
-	// the PacketCapture is succeeded.
+	// the PacketCapture is finished successfully.
 	maxNumCapturedPackets int32
 	// updateRateLimiter controls the frequency of the updates to PacketCapture status.
 	updateRateLimiter *rate.Limiter
@@ -194,7 +194,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		return
 	}
 
-	// cleanup existing packets file first. successful PacketCapture will upload them to the target file server.
+	// Clean up existing packets files first. A successful PacketCapture will upload them to the target file server.
 	// others are useless once we restart the controller.
 	if err := defaultFS.RemoveAll(packetDirectory); err != nil {
 		klog.ErrorS(err, "Remove packets dir error", "directory", packetDirectory)
@@ -372,7 +372,7 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 	}
 	writer, err := pcapgo.NewNgWriter(file, layers.LinkTypeEthernet)
 	if err != nil {
-		return fmt.Errorf("couldn't init pcap writer: %w", err)
+		return fmt.Errorf("couldn't initialize pcap writer: %w", err)
 	}
 	pcState.shouldSyncPackets = len(podInterfaces) > 0
 	pcState.pcapngFile = file
@@ -388,7 +388,7 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 	klog.V(2).InfoS("Installing flow entries for PacketCapture", "name", pc.Name)
 	err = c.ofClient.InstallPacketCaptureFlows(pcState.tag, senderOnly, receiverOnly, senderPacket, endpointPackets, ofPort, timeout)
 	if err != nil {
-		klog.ErrorS(err, "Install flow entries failed", "name", pc.Name)
+		klog.ErrorS(err, "Install flow entries failed for the PacketCapture", "name", pc.Name)
 	}
 	return err
 }
@@ -587,7 +587,7 @@ func (c *Controller) allocateTag(name string) (uint8, error) {
 			return i, nil
 		}
 	}
-	return 0, fmt.Errorf("number of on-going PacketCapture operations already reached the upper limit: %d", maxTagNum)
+	return 0, fmt.Errorf("the number of on-going PacketCapture operations already reached the upper limit: %d", maxTagNum)
 }
 
 func (c *Controller) getUploaderByProtocol(protocol StorageProtocolType) (ftp.Uploader, error) {
