@@ -62,7 +62,7 @@ edit the Agent configuration in the
 | `L7FlowExporter`              | Agent              | `false` | Alpha | v1.15         | N/A          | N/A        | Yes                |                                               |
 | `BGPPolicy`                   | Agent              | `false` | Alpha | v2.1          | N/A          | N/A        | No                 |                                               |
 | `NodeLatencyMonitor`          | Agent              | `false` | Alpha | v2.1          | N/A          | N/A        | No                 |                                               |
-| `PacketCapture`               | Agent              | `false` | Alpha | v2.0          | N/A          | N/A        | No                 |                                               |
+| `PacketCapture`               | Agent              | `false` | Alpha | v2.2          | N/A          | N/A        | No                 |                                               |
 
 ## Description and Requirements of Features
 
@@ -535,5 +535,5 @@ experienced by Pod traffic.
 
 ### PacketCapture
 
-`PacketCapture` allows user to capture live traffic packets from specified flow for further analysis.
+`PacketCapture` allows user to capture live traffic packets from specified flows for further analysis.
 Refer to this [document](packetcapture-guide.md) for more information.
