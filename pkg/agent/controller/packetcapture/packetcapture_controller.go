@@ -304,6 +304,26 @@ func (c *Controller) deletePacketCaptureState(pcName string) *packetCaptureState
 	return nil
 }
 
+func getPacketFileAndWriter(uid string) (afero.File, *pcapgo.NgWriter, error) {
+	filePath := uidToPath(uid)
+	var file afero.File
+	if _, err := os.Stat(filePath); err == nil {
+		return nil, nil, fmt.Errorf("packet file already exists. this may be due to an unexpected termination")
+	} else if os.IsNotExist(err) {
+		file, err = defaultFS.Create(filePath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create pcapng file: %w", err)
+		}
+	} else {
+		return nil, nil, fmt.Errorf("couldn't check if the file exists: %w", err)
+	}
+	writer, err := pcapgo.NewNgWriter(file, layers.LinkTypeEthernet)
+	if err != nil {
+		return nil, nil, fmt.Errorf("couldn't initialize pcap writer: %w", err)
+	}
+	return file, writer, nil
+}
+
 func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *packetCaptureState) error {
 	var err error
 	defer func() {
@@ -349,30 +369,25 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 		}
 	}
 
-	c.runningPacketCapturesMutex.Lock()
-	pcState.maxNumCapturedPackets = pc.Spec.CaptureConfig.FirstN.Number
-	var file afero.File
-	filePath := uidToPath(string(pc.UID))
-	if _, err := os.Stat(filePath); err == nil {
-		return fmt.Errorf("packet file already exists. this may be due to an unexpected termination")
-	} else if os.IsNotExist(err) {
-		file, err = defaultFS.Create(filePath)
+	f := func() error {
+		c.runningPacketCapturesMutex.Lock()
+		defer c.runningPacketCapturesMutex.Unlock()
+		pcState.maxNumCapturedPackets = pc.Spec.CaptureConfig.FirstN.Number
+		file, writer, err := getPacketFileAndWriter(string(pc.UID))
 		if err != nil {
-			return fmt.Errorf("failed to create pcapng file: %w", err)
+			return err
 		}
-	} else {
-		return fmt.Errorf("couldn't check if the file exists: %w", err)
+		pcState.shouldCapturePackets = len(podInterfaces) > 0
+		pcState.pcapngFile = file
+		pcState.pcapngWriter = writer
+		pcState.updateRateLimiter = rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1)
+		c.runningPacketCaptures[pcState.tag] = pcState
+		return nil
 	}
-	writer, err := pcapgo.NewNgWriter(file, layers.LinkTypeEthernet)
+	err = f()
 	if err != nil {
-		return fmt.Errorf("couldn't initialize pcap writer: %w", err)
+		return err
 	}
-	pcState.shouldCapturePackets = len(podInterfaces) > 0
-	pcState.pcapngFile = file
-	pcState.pcapngWriter = writer
-	pcState.updateRateLimiter = rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1)
-	c.runningPacketCaptures[pcState.tag] = pcState
-	c.runningPacketCapturesMutex.Unlock()
 
 	timeout := crdv1alpha1.DefaultPacketCaptureTimeout
 	if pc.Spec.Timeout != nil {
@@ -473,20 +488,20 @@ func (c *Controller) preparePacket(pc *crdv1alpha1.PacketCapture, intf *interfac
 			return nil, fmt.Errorf("failed to get the destination service %s/%s: %v", pc.Spec.Destination.Service.Namespace, pc.Spec.Destination.Service.Name, err)
 		}
 		if dstSvc.Spec.ClusterIP == "" {
-			return nil, errors.New("destination Service does not have a ClusterIP")
+			return nil, errors.New("the destination Service does not have a ClusterIP")
 		}
 
 		packet.DestinationIP = net.ParseIP(dstSvc.Spec.ClusterIP)
 		if !packet.IsIPv6 {
 			packet.DestinationIP = packet.DestinationIP.To4()
 			if packet.DestinationIP == nil {
-				return nil, errors.New("destination Service does not have an IPv4 address")
+				return nil, errors.New("the destination Service does not have an IPv4 address")
 			}
 		} else if packet.DestinationIP.To4() != nil {
-			return nil, errors.New("destination Service does not have an IPv6 address")
+			return nil, errors.New("the destination Service does not have an IPv6 address")
 		}
 	} else {
-		return nil, errors.New("destination is not specified")
+		return nil, errors.New("the destination is not specified")
 	}
 
 	if pc.Spec.Packet.TransportHeader.TCP != nil {
