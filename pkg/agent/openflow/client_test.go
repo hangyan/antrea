@@ -1897,7 +1897,7 @@ func Test_client_InstallPacketCaptureFlows(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			c := tt.prepareFunc(ctrl)
-			if err := c.InstallPacketCaptureFlows(tt.args.dataplaneTag, tt.args.senderOnly, tt.args.receiverOnly, tt.args.packet, nil, 0, 300); (err != nil) != tt.wantErr {
+			if err := c.InstallPacketCaptureFlows(tt.args.dataplaneTag, tt.args.receiverOnly, tt.args.packet, nil, 0, 300); (err != nil) != tt.wantErr {
 				t.Errorf("InstallPacketCaptureFlows() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

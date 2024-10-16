@@ -235,7 +235,7 @@ type Client interface {
 	InstallTraceflowFlows(dataplaneTag uint8, liveTraffic, droppedOnly, receiverOnly bool, packet *binding.Packet, ofPort uint32, timeoutSeconds uint16) error
 
 	// InstallPacketCaptureFlows installs flows for a PacketCapture request.
-	InstallPacketCaptureFlows(dataplaneTag uint8, senderOnly bool, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error
+	InstallPacketCaptureFlows(dataplaneTag uint8, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error
 
 	// UninstallTraceflowFlows uninstalls flows for a Traceflow request.
 	UninstallTraceflowFlows(dataplaneTag uint8) error
@@ -1050,11 +1050,10 @@ func (c *client) generatePipelines() {
 	}
 }
 
-func (c *client) InstallPacketCaptureFlows(dataplaneTag uint8, senderOnly, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
+func (c *client) InstallPacketCaptureFlows(dataplaneTag uint8, receiverOnly bool, packet *binding.Packet, endpointPackets []binding.Packet, ofPort uint32, timeoutSeconds uint16) error {
 	cacheKey := fmt.Sprintf("%x", dataplaneTag)
 	flows := c.featurePacketCapture.genFlows(dataplaneTag,
 		c.ovsMetersAreSupported,
-		senderOnly,
 		receiverOnly,
 		packet,
 		endpointPackets,
