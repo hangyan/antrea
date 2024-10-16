@@ -379,7 +379,7 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture, pcState *
 		timeout = *pc.Spec.Timeout
 	}
 	klog.V(2).InfoS("Installing flow entries for PacketCapture", "name", pc.Name)
-	err = c.ofClient.InstallPacketCaptureFlows(pcState.tag, senderOnly, receiverOnly, senderPacket, endpointPackets, ofPort, timeout)
+	err = c.ofClient.InstallPacketCaptureFlows(pcState.tag, receiverOnly, senderPacket, endpointPackets, ofPort, timeout)
 	if err != nil {
 		klog.ErrorS(err, "Install flow entries failed for the PacketCapture", "name", pc.Name)
 	}

@@ -421,17 +421,17 @@ func (mr *MockClientMockRecorder) InstallNodeFlows(arg0, arg1, arg2, arg3, arg4 
 }
 
 // InstallPacketCaptureFlows mocks base method.
-func (m *MockClient) InstallPacketCaptureFlows(arg0 byte, arg1, arg2 bool, arg3 *openflow0.Packet, arg4 []openflow0.Packet, arg5 uint32, arg6 uint16) error {
+func (m *MockClient) InstallPacketCaptureFlows(arg0 byte, arg1 bool, arg2 *openflow0.Packet, arg3 []openflow0.Packet, arg4 uint32, arg5 uint16) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallPacketCaptureFlows", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+	ret := m.ctrl.Call(m, "InstallPacketCaptureFlows", arg0, arg1, arg2, arg3, arg4, arg5)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // InstallPacketCaptureFlows indicates an expected call of InstallPacketCaptureFlows.
-func (mr *MockClientMockRecorder) InstallPacketCaptureFlows(arg0, arg1, arg2, arg3, arg4, arg5, arg6 any) *gomock.Call {
+func (mr *MockClientMockRecorder) InstallPacketCaptureFlows(arg0, arg1, arg2, arg3, arg4, arg5 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallPacketCaptureFlows", reflect.TypeOf((*MockClient)(nil).InstallPacketCaptureFlows), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallPacketCaptureFlows", reflect.TypeOf((*MockClient)(nil).InstallPacketCaptureFlows), arg0, arg1, arg2, arg3, arg4, arg5)
 }
 
 // InstallPodFlows mocks base method.

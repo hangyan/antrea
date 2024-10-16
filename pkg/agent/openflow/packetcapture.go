@@ -89,7 +89,6 @@ func (f *featurePacketCapture) replayMeters() []binding.OFEntry {
 // genFlows generates flows for packet capture. dataplaneTag is used as a mark for the target flow.
 func (f *featurePacketCapture) genFlows(dataplaneTag uint8,
 	ovsMetersAreSupported,
-	senderOnly bool,
 	receiverOnly bool,
 	packet *binding.Packet,
 	endpointPackets []binding.Packet,

@@ -696,7 +696,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 	pcc.informerFactory.Start(stopCh)
 	pcc.informerFactory.WaitForCacheSync(stopCh)
-	pcc.mockOFClient.EXPECT().InstallPacketCaptureFlows(pc.newState.tag, false, false,
+	pcc.mockOFClient.EXPECT().InstallPacketCaptureFlows(pc.newState.tag, false,
 		&binding.Packet{DestinationIP: net.ParseIP(pod2.Status.PodIP), IPProto: protocol.Type_ICMP},
 		nil, ofPortPod1, crdv1alpha1.DefaultPacketCaptureTimeout)
 	go pcc.Run(stopCh)
@@ -753,7 +753,7 @@ func TestProcessPacketCaptureItem(t *testing.T) {
 	pcc.crdInformerFactory.Start(stopCh)
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 
-	pcc.mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(1), false, pc.receiverOnly, pc.packet, nil, pc.ofPort, crdv1alpha1.DefaultPacketCaptureTimeout)
+	pcc.mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(1), pc.receiverOnly, pc.packet, nil, pc.ofPort, crdv1alpha1.DefaultPacketCaptureTimeout)
 	pcc.enqueuePacketCapture(pc.pc)
 	got := pcc.processPacketCaptureItem()
 	assert.Equal(t, pc.expected, got)
@@ -814,7 +814,7 @@ func TestStartPacketCapture(t *testing.T) {
 				ICMPType:       8,
 			},
 			expectedCalls: func(mockOFClient *openflowtest.MockClient) {
-				mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(1), false, false,
+				mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(1), false,
 					&binding.Packet{
 						DestinationIP: net.ParseIP(pod2IPv4),
 						IPProto:       1,
@@ -857,7 +857,7 @@ func TestStartPacketCapture(t *testing.T) {
 				ICMPType:      8,
 			},
 			expectedCalls: func(mockOFClient *openflowtest.MockClient) {
-				mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(2), true, false, &binding.Packet{
+				mockOFClient.EXPECT().InstallPacketCaptureFlows(uint8(2), false, &binding.Packet{
 					DestinationIP: net.ParseIP(dstIPv4),
 					IPProto:       1,
 				}, nil, ofPortPod1, crdv1alpha1.DefaultPacketCaptureTimeout)
