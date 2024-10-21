@@ -481,7 +481,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 			},
 			expectedPhase:  crdv1alpha1.PacketCaptureFailed,
-			expectedReason: fmt.Sprintf("Node: %s, Error: failed to get pod %s/%s: pods \"%s\" not found", node1, data.testNamespace, nonExistPodName, nonExistPodName),
+			expectedReason: fmt.Sprintf("Node: %s, Error: failed to get Pod %s/%s: pods \"%s\" not found", node1, data.testNamespace, nonExistPodName, nonExistPodName),
 		},
 	}
 	t.Run("testPacketCaptureBasic", func(t *testing.T) {
@@ -556,13 +556,13 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 				t.Logf("Ping(%d) '%s' -> '%v' failed: ERROR (%v)", protocol, srcPod, *dstPodIPs, err)
 			}
 		} else if protocol == protocolTCP {
-			for i := 1; i <= 15; i++ {
+			for i := 1; i <= 50; i++ {
 				if err := data.runNetcatCommandFromTestPodWithProtocol(tc.srcPod, data.testNamespace, toolboxContainerName, server, serverPodPort, "tcp"); err != nil {
 					t.Logf("Netcat(TCP) '%s' -> '%v' failed: ERROR (%v)", srcPod, server, err)
 				}
 			}
 		} else if protocol == protocolUDP {
-			for i := 1; i <= 15; i++ {
+			for i := 1; i <= 50; i++ {
 				if err := data.runNetcatCommandFromTestPodWithProtocol(tc.srcPod, data.testNamespace, toolboxContainerName, server, serverPodPort, "udp"); err != nil {
 					t.Logf("Netcat(UDP) '%s' -> '%v' failed: ERROR (%v)", srcPod, server, err)
 				}
