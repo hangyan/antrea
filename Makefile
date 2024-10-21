@@ -91,7 +91,7 @@ uninstall-hooks:
 .PHONY: bin
 bin:
 	@mkdir -p $(BINDIR)
-	GOOS=linux $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/...
+	CGO_ENABLED=1 GOOS=linux $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/...
 
 .trivy-bin:
 	curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $@ v0.34.0
@@ -106,12 +106,12 @@ trivy-scan: .trivy-bin check-TRIVY_TARGET_IMAGE
 .PHONY: antrea-agent
 antrea-agent:
 	@mkdir -p $(BINDIR)
-	GOOS=linux $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/antrea-agent
+	GOOS=linux CGO_ENABLED=1 $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/antrea-agent
 
 .PHONY: antrea-agent-release
 antrea-agent-release:
 	@mkdir -p $(BINDIR)
-	$(GO) build -o $(BINDIR)/$(ANTREA_AGENT_BINARY_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/antrea-agent
+	CGO_ENABLED=1 $(GO) build -o $(BINDIR)/$(ANTREA_AGENT_BINARY_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/antrea-agent
 
 .PHONY: antrea-agent-simulator
 antrea-agent-simulator:
@@ -121,7 +121,7 @@ antrea-agent-simulator:
 .PHONY: antrea-agent-instr-binary
 antrea-agent-instr-binary:
 	@mkdir -p $(BINDIR)
-	GOOS=linux $(GO) build -cover -o $(BINDIR)/antrea-agent-coverage -coverpkg=antrea.io/antrea/cmd/antrea-agent,antrea.io/antrea/pkg/... $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/antrea-agent
+	CGO_ENABLED=1 GOOS=linux $(GO) build -cover -o $(BINDIR)/antrea-agent-coverage -coverpkg=antrea.io/antrea/cmd/antrea-agent,antrea.io/antrea/pkg/... $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/antrea-agent
 
 .PHONY: antrea-controller
 antrea-controller:
@@ -321,16 +321,16 @@ $(GOLANGCI_LINT_BIN):
 .PHONY: golangci
 golangci: $(GOLANGCI_LINT_BIN)
 	@echo "===> Running golangci (linux) <==="
-	@GOOS=linux $(GOLANGCI_LINT_BIN) run -c $(CURDIR)/.golangci.yml
+	@GOOS=linux CGO_ENABLED=1 $(GOLANGCI_LINT_BIN) run -c $(CURDIR)/.golangci.yml
 	@echo "===> Running golangci (windows) <==="
-	@GOOS=windows $(GOLANGCI_LINT_BIN) run -c $(CURDIR)/.golangci.yml
+	@GOOS=windows CGO_ENABLED=1 $(GOLANGCI_LINT_BIN) run -c $(CURDIR)/.golangci.yml
 
 .PHONY: golangci-fix
 golangci-fix: $(GOLANGCI_LINT_BIN)
 	@echo "===> Running golangci (linux) <==="
-	@GOOS=linux $(GOLANGCI_LINT_BIN) run -c $(CURDIR)/.golangci.yml --fix
+	@GOOS=linux CGO_ENABLED=1 $(GOLANGCI_LINT_BIN) run -c $(CURDIR)/.golangci.yml --fix
 	@echo "===> Running golangci (windows) <==="
-	@GOOS=windows $(GOLANGCI_LINT_BIN) run -c $(CURDIR)/.golangci.yml --fix
+	@GOOS=windows CGO_ENABLED=1 $(GOLANGCI_LINT_BIN) run -c $(CURDIR)/.golangci.yml --fix
 
 .PHONY: clean
 clean:

@@ -44,6 +44,8 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
+    - name: Install libpcap
+      run: sudo apt-get update && sudo apt-get install -y libpcap-dev
     - name: Run unit tests
       run: make test-unit
     - name: Codecov
@@ -131,6 +133,8 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
+    - name: Install libpcap
+      run: sudo apt-get update && sudo apt-get install -y libpcap-dev
     - name: Run golangci-lint
       run: make golangci
 
@@ -148,6 +152,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
+      - name: Install libpcap
+        run: brew install libpcap
       - name: Run golangci-lint
         run: make golangci
 
@@ -165,6 +171,8 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
+    - name: Install libpcap
+      run: sudo apt-get update && sudo apt-get install -y libpcap-dev
     - name: Build Antrea binaries for amd64
       run: GOARCH=amd64 make bin
     - name: Build Antrea binaries for arm64

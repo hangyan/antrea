@@ -49,6 +49,8 @@ jobs:
       with:
         path: license-reports
         key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/go.sum', 'ci/golicense/**') }}
+    - name: Install libpcap
+      run: sudo apt-get update && sudo apt-get install -y libpcap-dev
     - run: mkdir antrea-bins
     - name: Build assets
       run: |

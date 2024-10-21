@@ -16,6 +16,8 @@ ARG GO_VERSION
 ARG BUILD_TAG
 FROM golang:${GO_VERSION} AS antrea-build
 
+RUN apt-get update && apt-get install -y libpcap-dev && apt-get autoremove -y && rm -rf /var/cache/apt/* /var/lib/apt/lists/*
+
 WORKDIR /antrea
 
 RUN --mount=type=cache,target=/go/pkg/mod/ \

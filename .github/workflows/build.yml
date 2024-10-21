@@ -49,6 +49,8 @@ jobs:
       uses: docker/setup-buildx-action@v3
       with:
         driver: ${{ env.docker_driver }}
+    - name: Install libpcap
+      run: sudo apt-get update && sudo apt-get install -y libpcap-dev
     - name: Build Antrea amd64 Docker image without pushing to registry
       if: ${{ env.push_needed == 'false' }}
       run: |
