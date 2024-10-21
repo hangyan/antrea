@@ -302,6 +302,9 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture) error {
 	return err
 }
 
+// genBPFFilterStr generate BPF filter string based on the origin PacketCapture spec and
+// parsed ip / port info (matchPacket) from it. An example generated filter string would be like:
+// 'src 192.168.0.1 and dst 192.168.0.2 and src port 8080 and dst port 8081 and tcp and tcp[tcpflags] & (tcp-syn|tcp-ack) != 0'
 func genBPFFilterStr(matchPacket *binding.Packet, packetSpec *crdv1alpha1.Packet) string {
 	exp := ""
 	if matchPacket.SourceIP != nil {
@@ -574,10 +577,13 @@ func (c *Controller) updatePacketCaptureStatus(pc *crdv1alpha1.PacketCapture, ph
 	type PacketCapture struct {
 		Status crdv1alpha1.PacketCaptureStatus `json:"status,omitempty"`
 	}
-	patchData := PacketCapture{Status: crdv1alpha1.PacketCaptureStatus{Phase: phase}}
+	patchData := PacketCapture{Status: crdv1alpha1.PacketCaptureStatus{Phase: phase, PacketsFilePath: latestPC.Status.PacketsFilePath}}
 	if phase == crdv1alpha1.PacketCaptureRunning && pc.Status.StartTime == nil {
 		t := metav1.Now()
 		patchData.Status.StartTime = &t
+	}
+	if phase == crdv1alpha1.PacketCaptureFailed {
+		patchData.Status.PacketsFilePath = ""
 	}
 	if reason != "" {
 		patchData.Status.Reason = reason
@@ -585,14 +591,13 @@ func (c *Controller) updatePacketCaptureStatus(pc *crdv1alpha1.PacketCapture, ph
 	if numCapturedPackets != 0 {
 		patchData.Status.NumCapturedPackets = numCapturedPackets
 	}
-	patchData.Status.PacketsFilePath = latestPC.Status.PacketsFilePath
 	payloads, _ := json.Marshal(patchData)
 	_, err = c.crdClient.CrdV1alpha1().PacketCaptures().Patch(context.TODO(), pc.Name, types.MergePatchType, payloads, metav1.PatchOptions{}, "status")
 	return err
 }
 
-// we also support only store the packets file in container, so add pod name here for users to
-// know which pod the file is located.
+// we also support only store the packets file in the antrea-agent Pod, so add the file path including the Pod name here for users to
+// know where the file is located at.
 func (c *Controller) setPacketsFilePathStatus(name string) error {
 	type PacketCapture struct {
 		Status crdv1alpha1.PacketCaptureStatus `json:"status,omitempty"`

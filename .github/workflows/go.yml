@@ -287,5 +287,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
+      - name: Install libpcap
+        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
       - name: Run Go benchmark test
         run: go test -run '^$' -bench . -benchtime 1x -timeout 10m -cpu 4 -v -benchmem ./pkg/...

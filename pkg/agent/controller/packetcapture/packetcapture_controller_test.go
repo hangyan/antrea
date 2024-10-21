@@ -56,6 +56,8 @@ var (
 	testTCPFlags       = "tcp[13] & 16 != 0"
 	icmp6Proto         = intstr.FromInt32(58)
 	icmpProto          = intstr.FromString("ICMP")
+	tcpProto           = intstr.FromString("TCP")
+	udpProto           = intstr.FromInt32(16)
 	port80       int32 = 80
 	port81       int32 = 81
 
@@ -448,6 +450,53 @@ func TestCreateMatchPacket(t *testing.T) {
 				assert.ErrorContains(t, err, pc.expectedErr)
 				assert.Nil(t, pkt)
 			}
+		})
+	}
+}
+
+func TestGenBPFFilterString(t *testing.T) {
+	tt := []struct {
+		name        string
+		packetSpec  *crdv1alpha1.Packet
+		matchPacket *binding.Packet
+		expected    string
+	}{
+		{
+			name: "tcp all args",
+			packetSpec: &crdv1alpha1.Packet{
+				IPFamily: v1.IPv4Protocol,
+				Protocol: &tcpProto,
+				TransportHeader: crdv1alpha1.TransportHeader{
+					TCP: &crdv1alpha1.TCPHeader{
+						Flags: &testTCPFlags,
+					},
+				},
+			},
+			matchPacket: &binding.Packet{
+				SourceIP:        net.ParseIP("192.168.0.1"),
+				DestinationIP:   net.ParseIP("192.168.0.2"),
+				SourcePort:      80,
+				DestinationPort: 81,
+			},
+			expected: "src 192.168.0.1 and dst 192.168.0.2 and src port 80 and dst port 81 and tcp and tcp[13] & 16 != 0",
+		},
+		{
+			name: "udp no port and numeric protocol",
+			packetSpec: &crdv1alpha1.Packet{
+				IPFamily: v1.IPv4Protocol,
+				Protocol: &udpProto,
+			},
+			matchPacket: &binding.Packet{
+				SourceIP:      net.ParseIP("192.168.0.1"),
+				DestinationIP: net.ParseIP("192.168.0.2"),
+			},
+			expected: "src 192.168.0.1 and dst 192.168.0.2 and proto 16",
+		},
+	}
+	for _, pt := range tt {
+		t.Run(pt.name, func(t *testing.T) {
+			result := genBPFFilterStr(pt.matchPacket, pt.packetSpec)
+			assert.Equal(t, pt.expected, result)
 		})
 	}
 }
