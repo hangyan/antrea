@@ -590,7 +590,7 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 func (data *TestData) waitForPacketCapture(t *testing.T, name string, phase crdv1alpha1.PacketCapturePhase) (*crdv1alpha1.PacketCapture, error) {
 	var pc *crdv1alpha1.PacketCapture
 	var err error
-	timeout := 60 * time.Second
+	var timeout = time.Duration(crdv1alpha1.DefaultPacketCaptureTimeout) * time.Second
 	if err = wait.PollUntilContextTimeout(context.Background(), defaultInterval, timeout, true, func(ctx context.Context) (bool, error) {
 		pc, err = data.crdClient.CrdV1alpha1().PacketCaptures().Get(ctx, name, metav1.GetOptions{})
 		if err != nil || pc.Status.Phase != phase {

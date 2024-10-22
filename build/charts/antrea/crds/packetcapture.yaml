@@ -25,6 +25,11 @@ spec:
           name: Destination-Pod
           type: string
           priority: 10
+        - jsonPath: .spec.source.ip
+          description: The IP address of the source.
+          name: Source-IP
+          type: string
+          priority: 10
         - jsonPath: .spec.destination.ip
           description: The IP address of the destination.
           name: Destination-IP
@@ -68,9 +73,12 @@ spec:
                   properties:
                     pod:
                       type: object
+                      required:
+                        - name
                       properties:
                         namespace:
                           type: string
+                          default: default
                         name:
                           type: string
                     ip:
@@ -85,21 +93,15 @@ spec:
                       - pod
                     - required:
                       - ip
-                    - required:
-                      - service
                   properties:
                     pod:
                       type: object
+                      required:
+                        - name
                       properties:
                         namespace:
                           type: string
-                        name:
-                          type: string
-                    service:
-                      type: object
-                      properties:
-                        namespace:
-                          type: string
+                          default: default
                         name:
                           type: string
                     ip:
@@ -150,13 +152,14 @@ spec:
                   default: 60
                 captureConfig:
                   type: object
-                  anyOf:
-                    - properties:
-                        firstN:
-                          required: [number]
+                  oneOf:
+                    - required:
+                      - firstN
                   properties:
                     firstN:
                       type: object
+                      required:
+                        - number
                       properties:
                         number:
                           type: integer
