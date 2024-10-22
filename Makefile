@@ -64,6 +64,12 @@ all: build
 include versioning.mk
 
 LDFLAGS += $(VERSION_LDFLAGS)
+ifeq ($(LDFLAGS), arm64)
+	LDFLAGS += -linkmode=external -extldflags=-static
+endif
+ifeq ($(LDFLAGS), arm)
+	LDFLAGS += -linkmode=external -extldflags=-static
+endif
 
 UNAME_S := $(shell uname -s)
 USERID  := $(shell id -u)
