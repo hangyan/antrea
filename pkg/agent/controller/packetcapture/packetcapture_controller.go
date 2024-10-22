@@ -347,55 +347,65 @@ func (c *Controller) performCapture(captureState *packetCaptureState, device str
 		return err
 	}
 
+	timer := time.NewTicker(timeout)
+	defer timer.Stop()
 	// Use the handle as a packet source to process all packets
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	for packet := range packetSource.Packets() {
-		if captureState.numCapturedPackets == captureState.maxNumCapturedPackets {
-			break
-		}
-		captureState.numCapturedPackets++
-		ci := gopacket.CaptureInfo{
-			Timestamp:     time.Now(),
-			CaptureLength: len(packet.Data()),
-			Length:        len(packet.Data()),
-		}
-		err = captureState.pcapngWriter.WritePacket(ci, packet.Data())
-		if err != nil {
-			return fmt.Errorf("couldn't write packet: %w", err)
-		}
-		klog.V(2).InfoS("capture packet", "name", captureState.name, "count",
-			captureState.numCapturedPackets, "packet", packet.String())
+	for {
+		select {
+		case packet := <-packetSource.Packets():
+			if captureState.numCapturedPackets == captureState.maxNumCapturedPackets {
+				break
+			}
+			captureState.numCapturedPackets++
+			ci := gopacket.CaptureInfo{
+				Timestamp:     time.Now(),
+				CaptureLength: len(packet.Data()),
+				Length:        len(packet.Data()),
+			}
+			err = captureState.pcapngWriter.WritePacket(ci, packet.Data())
+			if err != nil {
+				return fmt.Errorf("couldn't write packet: %w", err)
+			}
+			klog.V(2).InfoS("capture packet", "name", captureState.name, "count",
+				captureState.numCapturedPackets, "packet", packet.String())
 
-		reachTarget := captureState.numCapturedPackets == captureState.maxNumCapturedPackets
-		// use rate limiter to reduce the times we need to update status.
-		if reachTarget || captureState.updateRateLimiter.Allow() {
+			reachTarget := captureState.numCapturedPackets == captureState.maxNumCapturedPackets
+			// use rate limiter to reduce the times we need to update status.
+			if reachTarget || captureState.updateRateLimiter.Allow() {
+				pc, err := c.packetCaptureLister.Get(captureState.name)
+				if err != nil {
+					return fmt.Errorf("get PacketCapture failed: %w", err)
+				}
+				// if reach the target. flush the file and upload it.
+				if reachTarget {
+					if err := captureState.pcapngWriter.Flush(); err != nil {
+						return err
+					}
+					if err := c.uploadPackets(pc, captureState.pcapngFile); err != nil {
+						return err
+					}
+					if err := captureState.pcapngFile.Close(); err != nil {
+						return err
+					}
+					if err := c.setPacketsFilePathStatus(pc.Name); err != nil {
+						return err
+					}
+				}
+				err = c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
+				if err != nil {
+					return fmt.Errorf("failed to update the PacketCapture: %w", err)
+				}
+				klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(pc), "numCapturedPackets", captureState.numCapturedPackets)
+			}
+		case <-timer.C:
 			pc, err := c.packetCaptureLister.Get(captureState.name)
 			if err != nil {
 				return fmt.Errorf("get PacketCapture failed: %w", err)
 			}
-			// if reach the target. flush the file and upload it.
-			if reachTarget {
-				if err := captureState.pcapngWriter.Flush(); err != nil {
-					return err
-				}
-				if err := c.uploadPackets(pc, captureState.pcapngFile); err != nil {
-					return err
-				}
-				if err := captureState.pcapngFile.Close(); err != nil {
-					return err
-				}
-				if err := c.setPacketsFilePathStatus(pc.Name); err != nil {
-					return err
-				}
-			}
-			err = c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
-			if err != nil {
-				return fmt.Errorf("failed to update the PacketCapture: %w", err)
-			}
-			klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(pc), "numCapturedPackets", captureState.numCapturedPackets)
+			return c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureFailed, captureTimeoutReason, 0)
 		}
 	}
-	return nil
 }
 
 func (c *Controller) getPodIP(podRef *crdv1alpha1.PodReference, isIPv6 bool) (net.IP, error) {
