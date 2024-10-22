@@ -20,15 +20,14 @@ pushd .
 apt-get update && apt-get install -y flex bison gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 mkdir -p /tmp/pcap
 cd /tmp/pcap || exit
-
+rm -rf libpcap*
 wget -c http://www.tcpdump.org/release/libpcap-${PCAPV}.tar.gz
 export CC=aarch64-linux-gnu-gcc
-if [ $(ARCH) == "arm" ]; then
-  export CC=arm-linux-gnueabihf-gcc
+if [ ${ARCH} == "arm" ]; then
+  export CC=arm-linux-gnueabi-gcc
 fi
-rm -rf libpcap*
 tar -zxvf libpcap-${PCAPV}.tar.gz
-mv libpcap-${PCAPV} libpcap || exit
+mv libpcap-${PCAPV} libpcap && cd libpcap || exit
 ./configure --host=aarch64-linux --with-pcap=linux
 make
 popd || exit

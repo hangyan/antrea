@@ -91,7 +91,7 @@ for build in "${ANTREA_AGENT_BUILDS[@]}"; do
     elif [ "$arch" == "arm" ]; then
       ARCH=arm ./hack/build-arm-libpcap.sh
       unset CC
-      CC=arm-linux-gnueabihf-gcc CGO_LDFLAGS="-static -L/tmp/pcap/libpcap" \
+      CC=arm-linux-gnueabi-gcc CGO_LDFLAGS="-static -L/tmp/pcap/libpcap" \
       GOOS=$os GOARCH=$arch BINDIR="$OUTPUT_DIR" ANTREA_AGENT_BINARY_NAME="antrea-agent-$suffix" make antrea-agent-release
     else
        GOOS=$os GOARCH=$arch BINDIR="$OUTPUT_DIR" ANTREA_AGENT_BINARY_NAME="antrea-agent-$suffix" make antrea-agent-release
