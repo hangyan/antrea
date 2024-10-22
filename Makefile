@@ -64,6 +64,12 @@ all: build
 include versioning.mk
 
 LDFLAGS += $(VERSION_LDFLAGS)
+ifeq ($(LDFLAGS), arm64)
+	LDFLAGS += -linkmode=external -extldflags=-static
+endif
+ifeq ($(LDFLAGS), arm)
+	LDFLAGS += -linkmode=external -extldflags=-static
+endif
 
 UNAME_S := $(shell uname -s)
 USERID  := $(shell id -u)
@@ -91,7 +97,7 @@ uninstall-hooks:
 .PHONY: bin
 bin:
 	@mkdir -p $(BINDIR)
-	CGO_ENABLED=1 GOOS=linux $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/...
+	CGO_ENABLED=1 GOOS=linux $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS) -extldflags=-static' antrea.io/antrea/cmd/...
 
 .trivy-bin:
 	curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $@ v0.34.0
@@ -106,7 +112,7 @@ trivy-scan: .trivy-bin check-TRIVY_TARGET_IMAGE
 .PHONY: antrea-agent
 antrea-agent:
 	@mkdir -p $(BINDIR)
-	GOOS=linux CGO_ENABLED=1 $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/antrea-agent
+	GOOS=linux CGO_ENABLED=1 $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS) -extldflags=-static' antrea.io/antrea/cmd/antrea-agent
 
 .PHONY: antrea-agent-release
 antrea-agent-release:
@@ -121,7 +127,7 @@ antrea-agent-simulator:
 .PHONY: antrea-agent-instr-binary
 antrea-agent-instr-binary:
 	@mkdir -p $(BINDIR)
-	CGO_ENABLED=1 GOOS=linux $(GO) build -cover -o $(BINDIR)/antrea-agent-coverage -coverpkg=antrea.io/antrea/cmd/antrea-agent,antrea.io/antrea/pkg/... $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/antrea-agent
+	CGO_ENABLED=1 GOOS=linux $(GO) build -cover -o $(BINDIR)/antrea-agent-coverage -coverpkg=antrea.io/antrea/cmd/antrea-agent,antrea.io/antrea/pkg/... $(GOFLAGS) -ldflags '$(LDFLAGS) -extldflags=-static' antrea.io/antrea/cmd/antrea-agent
 
 .PHONY: antrea-controller
 antrea-controller:

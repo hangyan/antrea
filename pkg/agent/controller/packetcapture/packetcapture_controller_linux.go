@@ -76,7 +76,6 @@ const (
 	// reason for timeout
 	captureTimeoutReason   = "PacketCapture timeout"
 	defaultTimeoutDuration = time.Second * time.Duration(crdv1alpha1.DefaultPacketCaptureTimeout)
-	timeoutCheckInterval   = 10 * time.Second
 
 	captureStatusUpdatePeriod = 10 * time.Second
 
@@ -433,6 +432,9 @@ func (c *Controller) performCapture(captureState *packetCaptureState, device str
 		return err
 	}
 	afpacketHandle, err := newAfpacketHandle(device, szFrame, szBlock, numBlocks, false, timeout)
+	if err != nil {
+		return err
+	}
 	err = afpacketHandle.setBPFFilter(filter, snapshotLen)
 	if err != nil {
 		return err
