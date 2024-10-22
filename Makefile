@@ -91,6 +91,7 @@ uninstall-hooks:
 .PHONY: bin
 bin:
 	@mkdir -p $(BINDIR)
+
 	CGO_ENABLED=1 GOOS=linux $(GO) build -o $(BINDIR) $(GOFLAGS) -ldflags '$(LDFLAGS)' antrea.io/antrea/cmd/...
 
 .trivy-bin:
@@ -513,18 +514,3 @@ spelling-fix:
 	@echo "===> Updating incorrect spellings <==="
 	$(CURDIR)/hack/update-spelling.sh
 
-.PHONY: build-arm64-libpcap
-build-arm64-libpcap:
-	@echo "===> Building ARM64 libpcap <==="
-	pushd
-	apt-get update && apt-get install -y flex bison gcc-aarch64-linux-gnu
-	mkdir -p /tmp/pcap
-	cd /tmmp/pcap
-	export PCAPV=1.10.5
-	wget http://www.tcpdump.org/release/libpcap-$PCAPV.tar.gz
-	export CC=aarch64-linux-gnu-gcc
-	tar -zxvf libpcap-$PCAPV.tar.gz
-	cd libpcap-$PCAPV
-	./configure --host=aarch64-linux --with-pcap=linux
-	make
-	popd
