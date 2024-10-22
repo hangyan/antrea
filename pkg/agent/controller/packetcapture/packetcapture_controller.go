@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build linux
+
 package packetcapture
 
 import (
@@ -27,10 +29,12 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/spf13/afero"
+	"golang.org/x/net/bpf"
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -82,7 +86,9 @@ const (
 	fileServerAuthSecretNamespace = "kube-system"
 
 	// max packet size for pcap capture.
-	snapshotLen = 65536
+	snapshotLen = 65535
+	// MB Interface buffersize
+	bufferSize = 8
 )
 
 var (
@@ -336,76 +342,164 @@ func genBPFFilterStr(matchPacket *binding.Packet, packetSpec *crdv1alpha1.Packet
 	return exp
 }
 
-func (c *Controller) performCapture(captureState *packetCaptureState, device string, filter string, timeout time.Duration) error {
-	handle, err := pcap.OpenLive(device, snapshotLen, true, timeout)
+// afPacketComputeSize computes the block_size and the num_blocks in such a way that the
+// allocated mmap buffer is close to but smaller than target_size_mb.
+// The restriction is that the block_size must be divisible by both the
+// frame size and page size.
+func afPacketComputeSize(targetSizeMb int, snapLen int, pageSize int) (
+	frameSize int, blockSize int, numBlocks int, err error) {
+
+	if snapLen < pageSize {
+		frameSize = pageSize / (pageSize / snapLen)
+	} else {
+		frameSize = (snapLen/pageSize + 1) * pageSize
+	}
+	// 128 is the default from the gopacket library so just use that
+	blockSize = frameSize * 128
+	numBlocks = (targetSizeMb * 1024 * 1024) / blockSize
+
+	if numBlocks == 0 {
+		return 0, 0, 0, fmt.Errorf("interface buffersize is too small")
+	}
+	return frameSize, blockSize, numBlocks, nil
+}
+
+type afpacketHandle struct {
+	TPacket *afpacket.TPacket
+}
+
+// setBPFFilter translates a BPF filter string into BPF RawInstruction and applies them.
+func (h *afpacketHandle) setBPFFilter(filter string, snapLen int) (err error) {
+	pcapBPF, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, snapLen, filter)
 	if err != nil {
 		return err
 	}
-	defer handle.Close()
-
-	if err := handle.SetBPFFilter(filter); err != nil {
+	var bpfIns []bpf.RawInstruction
+	for _, ins := range pcapBPF {
+		bpfIns2 := bpf.RawInstruction{
+			Op: ins.Code,
+			Jt: ins.Jt,
+			Jf: ins.Jf,
+			K:  ins.K,
+		}
+		bpfIns = append(bpfIns, bpfIns2)
+	}
+	if err = h.TPacket.SetBPF(bpfIns); err != nil {
 		return err
 	}
+	return h.TPacket.SetBPF(bpfIns)
+}
 
-	timer := time.NewTicker(timeout)
-	defer timer.Stop()
-	// Use the handle as a packet source to process all packets
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+// ZeroCopyReadPacketData satisfies ZeroCopyPacketDataSource interface
+func (h *afpacketHandle) ZeroCopyReadPacketData() (data []byte, ci gopacket.CaptureInfo, err error) {
+	return h.TPacket.ZeroCopyReadPacketData()
+}
+
+// Close will close afpacket source.
+func (h *afpacketHandle) Close() {
+	h.TPacket.Close()
+}
+
+// LinkType returns ethernet link type.
+func (h *afpacketHandle) LinkType() layers.LinkType {
+	return layers.LinkTypeEthernet
+}
+
+// SocketStats prints received, dropped, queue-freeze packet stats.
+func (h *afpacketHandle) SocketStats() (as afpacket.SocketStats, asv afpacket.SocketStatsV3, err error) {
+	return h.TPacket.SocketStats()
+}
+
+func newAfpacketHandle(device string, snapLen int, blockSize int, numBlocks int,
+	useVLAN bool, timeout time.Duration) (*afpacketHandle, error) {
+	h := &afpacketHandle{}
+	var err error
+	h.TPacket, err = afpacket.NewTPacket(
+		afpacket.OptInterface(device),
+		afpacket.OptFrameSize(snapLen),
+		afpacket.OptBlockSize(blockSize),
+		afpacket.OptNumBlocks(numBlocks),
+		afpacket.OptAddVLANHeader(useVLAN),
+		afpacket.OptPollTimeout(timeout),
+		afpacket.SocketRaw,
+		afpacket.TPacketVersion3)
+	return h, err
+}
+
+func (c *Controller) performCapture(captureState *packetCaptureState, device string, filter string, timeout time.Duration) error {
+	szFrame, szBlock, numBlocks, err := afPacketComputeSize(bufferSize, snapshotLen, os.Getpagesize())
+	if err != nil {
+		klog.V(4).ErrorS(err, "afpacket compute block size info error", "pagesize", os.Getpagesize())
+		return err
+	}
+	afpacketHandle, err := newAfpacketHandle(device, szFrame, szBlock, numBlocks, false, timeout)
+	err = afpacketHandle.setBPFFilter(filter, snapshotLen)
+	if err != nil {
+		return err
+	}
+	source := gopacket.ZeroCopyPacketDataSource(afpacketHandle)
+	defer afpacketHandle.Close()
+
 	for {
-		select {
-		case packet := <-packetSource.Packets():
-			if captureState.numCapturedPackets == captureState.maxNumCapturedPackets {
-				break
-			}
-			captureState.numCapturedPackets++
-			ci := gopacket.CaptureInfo{
-				Timestamp:     time.Now(),
-				CaptureLength: len(packet.Data()),
-				Length:        len(packet.Data()),
-			}
-			err = captureState.pcapngWriter.WritePacket(ci, packet.Data())
-			if err != nil {
-				return fmt.Errorf("couldn't write packet: %w", err)
-			}
-			klog.V(2).InfoS("capture packet", "name", captureState.name, "count",
-				captureState.numCapturedPackets, "packet", packet.String())
-
-			reachTarget := captureState.numCapturedPackets == captureState.maxNumCapturedPackets
-			// use rate limiter to reduce the times we need to update status.
-			if reachTarget || captureState.updateRateLimiter.Allow() {
+		if captureState.numCapturedPackets == captureState.maxNumCapturedPackets {
+			break
+		}
+		data, _, err := source.ZeroCopyReadPacketData()
+		if err != nil {
+			klog.ErrorS(err, "err read packet data from source")
+			if strings.Contains(err.Error(), "packet poll timeout expired") {
 				pc, err := c.packetCaptureLister.Get(captureState.name)
 				if err != nil {
 					return fmt.Errorf("get PacketCapture failed: %w", err)
 				}
-				// if reach the target. flush the file and upload it.
-				if reachTarget {
-					if err := captureState.pcapngWriter.Flush(); err != nil {
-						return err
-					}
-					if err := c.uploadPackets(pc, captureState.pcapngFile); err != nil {
-						return err
-					}
-					if err := captureState.pcapngFile.Close(); err != nil {
-						return err
-					}
-					if err := c.setPacketsFilePathStatus(pc.Name); err != nil {
-						return err
-					}
-				}
-				err = c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
-				if err != nil {
-					return fmt.Errorf("failed to update the PacketCapture: %w", err)
-				}
-				klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(pc), "numCapturedPackets", captureState.numCapturedPackets)
+				return c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureFailed, captureTimeoutReason, 0)
 			}
-		case <-timer.C:
+			return err
+		}
+		captureState.numCapturedPackets++
+		ci := gopacket.CaptureInfo{
+			Timestamp:     time.Now(),
+			CaptureLength: len(data),
+			Length:        len(data),
+		}
+		err = captureState.pcapngWriter.WritePacket(ci, data)
+		if err != nil {
+			return fmt.Errorf("couldn't write packet: %w", err)
+		}
+		klog.V(2).InfoS("capture packet", "name", captureState.name, "count",
+			captureState.numCapturedPackets, "packet", string(data))
+
+		reachTarget := captureState.numCapturedPackets == captureState.maxNumCapturedPackets
+		// use rate limiter to reduce the times we need to update status.
+		if reachTarget || captureState.updateRateLimiter.Allow() {
 			pc, err := c.packetCaptureLister.Get(captureState.name)
 			if err != nil {
 				return fmt.Errorf("get PacketCapture failed: %w", err)
 			}
-			return c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureFailed, captureTimeoutReason, 0)
+			// if reach the target. flush the file and upload it.
+			if reachTarget {
+				if err := captureState.pcapngWriter.Flush(); err != nil {
+					return err
+				}
+				if err := c.uploadPackets(pc, captureState.pcapngFile); err != nil {
+					return err
+				}
+				if err := captureState.pcapngFile.Close(); err != nil {
+					return err
+				}
+				if err := c.setPacketsFilePathStatus(pc.Name); err != nil {
+					return err
+				}
+			}
+			err = c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
+			if err != nil {
+				return fmt.Errorf("failed to update the PacketCapture: %w", err)
+			}
+			klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(pc), "numCapturedPackets", captureState.numCapturedPackets)
 		}
 	}
+	return nil
+
 }
 
 func (c *Controller) getPodIP(podRef *crdv1alpha1.PodReference, isIPv6 bool) (net.IP, error) {
@@ -522,11 +616,10 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 		err = c.initPacketCapture(pc)
 	case crdv1alpha1.PacketCaptureRunning:
 		err = c.checkPacketCaptureStatus(pc)
-	default:
+	case crdv1alpha1.PacketCaptureFailed:
 		c.cleanupPacketCapture(pcName)
 	}
 	return err
-
 }
 
 func (c *Controller) getUploaderByProtocol(protocol StorageProtocolType) (ftp.Uploader, error) {
