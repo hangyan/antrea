@@ -83,7 +83,14 @@ for build in "${ANTREA_AGENT_BUILDS[@]}"; do
     arch="${args[1]}"
     suffix="${args[2]}"
 
+    if [ "$arch" == "arm64" ]; then
+      make build-arm64-libpcap
+      export CC=aarch64-linux-gnu-gcc
+      export CGO_LDFLAGS="-static -L/tmp/pcap/libpcap-$PCAPV"
+      export LDFLAGS="-linkmode=external -extldflags=-static -s -w"
+    fi
     GOOS=$os GOARCH=$arch BINDIR="$OUTPUT_DIR" ANTREA_AGENT_BINARY_NAME="antrea-agent-$suffix" make antrea-agent-release
+    unset CC
 done
 
 ANTREA_CNI_BUILDS=(
