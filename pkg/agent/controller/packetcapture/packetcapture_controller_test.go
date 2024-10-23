@@ -57,7 +57,7 @@ var (
 	icmp6Proto         = intstr.FromInt32(58)
 	icmpProto          = intstr.FromString("ICMP")
 	tcpProto           = intstr.FromString("TCP")
-	udpProto           = intstr.FromInt32(16)
+	udpProto           = intstr.FromInt32(17)
 	port80       int32 = 80
 	port81       int32 = 81
 
@@ -478,7 +478,7 @@ func TestGenBPFFilterString(t *testing.T) {
 				SourcePort:      80,
 				DestinationPort: 81,
 			},
-			expected: "src 192.168.0.1 and dst 192.168.0.2 and src port 80 and dst port 81 and tcp and tcp[13] & 16 != 0",
+			expected: "tcp and src host 192.168.0.1 and dst host 192.168.0.2 and src port 80 and dst port 81 and tcp[13] & 16 != 0",
 		},
 		{
 			name: "udp no port and numeric protocol",
@@ -490,7 +490,18 @@ func TestGenBPFFilterString(t *testing.T) {
 				SourceIP:      net.ParseIP("192.168.0.1"),
 				DestinationIP: net.ParseIP("192.168.0.2"),
 			},
-			expected: "src 192.168.0.1 and dst 192.168.0.2 and proto 16",
+			expected: "udp and src host 192.168.0.1 and dst host 192.168.0.2",
+		},
+		{name: "icmp with src and dest",
+			packetSpec: &crdv1alpha1.Packet{
+				IPFamily: v1.IPv4Protocol,
+				Protocol: &icmpProto,
+			},
+			matchPacket: &binding.Packet{
+				SourceIP:      net.ParseIP("192.168.0.1"),
+				DestinationIP: net.ParseIP("192.168.0.2"),
+			},
+			expected: "icmp src host 192.168.0.1 and dst host 192.168.0.2",
 		},
 	}
 	for _, pt := range tt {

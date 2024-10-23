@@ -89,6 +89,16 @@ var (
 	defaultFS       = afero.NewOsFs()
 )
 
+// go-pcap seems doesn't support filter with numeric protocol number yet. use this map
+// to translate to string.
+var protocolMap = map[int]string{
+	1:   "icmp",
+	6:   "tcp",
+	17:  "udp",
+	58:  "icmp6",
+	132: "sctp",
+}
+
 func getPacketDirectory() string {
 	return filepath.Join(os.TempDir(), "antrea", "packetcapture", "packets")
 }
@@ -224,10 +234,18 @@ func (c *Controller) processPacketCaptureItem() bool {
 }
 
 func (c *Controller) cleanupPacketCapture(pcName string) {
-	if err := defaultFS.Remove(nameToPath(pcName)); err == nil {
-		klog.V(2).InfoS("Deleted pcap file", "name", pcName, "path", nameToPath(pcName))
+	path := nameToPath(pcName)
+	exist, err := afero.Exists(defaultFS, path)
+	if err != nil {
+		klog.ErrorS(err, "Failed to check if path exists", "path", path)
+	}
+	if !exist {
+		return
+	}
+	if err := defaultFS.Remove(path); err == nil {
+		klog.V(2).InfoS("Deleted pcap file", "name", pcName, "path", path)
 	} else {
-		klog.ErrorS(err, "Failed to delete pcap file", "name", pcName, "path", nameToPath(pcName))
+		klog.ErrorS(err, "Failed to delete pcap file", "name", pcName, "path", path)
 	}
 }
 
@@ -306,11 +324,34 @@ func (c *Controller) startPacketCapture(pc *crdv1alpha1.PacketCapture) error {
 // 'src 192.168.0.1 and dst 192.168.0.2 and src port 8080 and dst port 8081 and tcp and tcp[tcpflags] & (tcp-syn|tcp-ack) != 0'
 func genBPFFilterStr(matchPacket *binding.Packet, packetSpec *crdv1alpha1.Packet) string {
 	exp := ""
+	protocol := packetSpec.Protocol
+	if protocol != nil {
+		if protocol.Type == intstr.Int {
+			if val, ok := protocolMap[protocol.IntValue()]; ok {
+				exp += val
+			} else {
+				// go-pcap didn't support proto number for now.
+				exp += "proto " + strconv.Itoa(protocol.IntValue())
+			}
+		} else {
+			exp += strings.ToLower(protocol.String())
+		}
+	}
+	if exp != "" {
+		if exp == "icmp" || exp == "icmp6" {
+			// go-pcap bug, see:https://github.com/packetcap/go-pcap/issues/59
+			// cannot use `and` now
+			exp += " "
+		} else {
+			exp += " and "
+		}
+
+	}
 	if matchPacket.SourceIP != nil {
-		exp += "src " + matchPacket.SourceIP.String()
+		exp += "src host " + matchPacket.SourceIP.String()
 	}
 	if matchPacket.DestinationIP != nil {
-		exp += " and dst " + matchPacket.DestinationIP.String()
+		exp += " and dst host " + matchPacket.DestinationIP.String()
 	}
 	if matchPacket.SourcePort > 0 {
 		exp += " and src port " + strconv.Itoa(int(matchPacket.SourcePort))
@@ -318,14 +359,7 @@ func genBPFFilterStr(matchPacket *binding.Packet, packetSpec *crdv1alpha1.Packet
 	if matchPacket.DestinationPort > 0 {
 		exp += " and dst port " + strconv.Itoa(int(matchPacket.DestinationPort))
 	}
-	protocol := packetSpec.Protocol
-	if protocol != nil {
-		if protocol.Type == intstr.Int {
-			exp += " and proto " + strconv.Itoa(protocol.IntValue())
-		} else {
-			exp += " and " + strings.ToLower(protocol.String())
-		}
-	}
+
 	tcp := packetSpec.TransportHeader.TCP
 	if tcp != nil {
 		if tcp.Flags != nil {
@@ -367,8 +401,8 @@ func (c *Controller) performCapture(captureState *packetCaptureState, device str
 			if err != nil {
 				return fmt.Errorf("couldn't write packet: %w", err)
 			}
-			klog.V(2).InfoS("capture packet", "name", captureState.name, "count",
-				captureState.numCapturedPackets, "packet", packet.String())
+			klog.V(9).InfoS("capture packet", "name", captureState.name, "count",
+				captureState.numCapturedPackets, "len", ci.Length)
 
 			reachTarget := captureState.numCapturedPackets == captureState.maxNumCapturedPackets
 			// use rate limiter to reduce the times we need to update status.
@@ -392,6 +426,7 @@ func (c *Controller) performCapture(captureState *packetCaptureState, device str
 						return err
 					}
 				}
+
 				err = c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureRunning, "", captureState.numCapturedPackets)
 				if err != nil {
 					return fmt.Errorf("failed to update the PacketCapture: %w", err)
@@ -403,6 +438,7 @@ func (c *Controller) performCapture(captureState *packetCaptureState, device str
 			if err != nil {
 				return fmt.Errorf("get PacketCapture failed: %w", err)
 			}
+			klog.InfoS("PacketCapture timeout", "name", pc.Name)
 			return c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureFailed, captureTimeoutReason, 0)
 		}
 	}
@@ -625,6 +661,7 @@ func (c *Controller) setPacketsFilePathStatus(name string) error {
 // checkPacketCaptureStatus is only called for PacketCaptures in the Running phase
 func (c *Controller) checkPacketCaptureStatus(pc *crdv1alpha1.PacketCapture) error {
 	if checkPacketCaptureSucceeded(pc) {
+		klog.V(4).InfoS("PacketCapture succeeded", "name", pc.Name)
 		return c.updatePacketCaptureStatus(pc, crdv1alpha1.PacketCaptureSucceeded, "", 0)
 	}
 

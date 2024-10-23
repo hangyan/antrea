@@ -48,6 +48,9 @@ var (
 	icmp6Proto = intstr.FromInt32(58)
 
 	testServerPort int32 = 80
+
+	pcTimeoutReason = "PacketCapture timeout"
+	pcShortTimeout  = uint16(10)
 )
 
 type pcTestCase struct {
@@ -181,6 +184,7 @@ func TestPacketCapture(t *testing.T) {
 	t.Run("testPacketCapture", func(t *testing.T) {
 		testPacketCapture(t, data)
 	})
+
 }
 
 func testPacketCapture(t *testing.T, data *TestData) {
@@ -208,14 +212,15 @@ func testPacketCapture(t *testing.T, data *TestData) {
 
 	testcases := []pcTestCase{
 		{
-			name:      "to-ipv4-ip",
+			name:      "timeout-case",
 			ipVersion: 4,
 			srcPod:    pcToolboxPodName,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, pcToolboxPodName, data.testNamespace, tcpServerPodName)),
+					Name: randName(fmt.Sprintf("%s-timeout-case-", data.testNamespace)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
+					Timeout: &pcShortTimeout,
 					Source: crdv1alpha1.Source{
 						Pod: &crdv1alpha1.PodReference{
 							Namespace: data.testNamespace,
@@ -245,8 +250,9 @@ func testPacketCapture(t *testing.T, data *TestData) {
 				},
 			},
 
-			expectedPhase: crdv1alpha1.PacketCaptureSucceeded,
-			expectedNum:   5,
+			expectedPhase:  crdv1alpha1.PacketCaptureFailed,
+			expectedReason: pcTimeoutReason,
+			expectedNum:    5,
 		},
 	}
 	t.Run("testPacketCapture", func(t *testing.T) {
@@ -292,7 +298,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 			srcPod:    pcToolboxPodName,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, pcToolboxPodName, data.testNamespace, tcpServerPodName)),
+					Name: randName(fmt.Sprintf("%s-ipv4-tcp-", data.testNamespace)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
@@ -335,7 +341,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 			srcPod:    pcToolboxPodName,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, pcToolboxPodName, data.testNamespace, udpServerPodName)),
+					Name: randName(fmt.Sprintf("%s-ipv4-udp-", data.testNamespace)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
@@ -378,7 +384,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 			srcPod:    node1Pods[0],
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, node1Pods[0], data.testNamespace, node1Pods[1])),
+					Name: randName(fmt.Sprintf("%s-ipv4-icmp-", data.testNamespace)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
@@ -416,7 +422,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 			srcPod:    node1Pods[0],
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-ipv6", data.testNamespace, node1Pods[0], data.testNamespace, node1Pods[1])),
+					Name: randName(fmt.Sprintf("%s-ipv6-icmp-", data.testNamespace)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
@@ -455,7 +461,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 			srcPod:    node1Pods[0],
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-to-%s-%s-", data.testNamespace, node1Pods[0], data.testNamespace, nonExistPodName)),
+					Name: randName(fmt.Sprintf("%s-non-exist-pod-", data.testNamespace)),
 				},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
@@ -533,7 +539,7 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 		}
 	}()
 
-	if dstPodName != nonExistPodName {
+	if dstPodName != nonExistPodName && tc.expectedReason != pcTimeoutReason {
 		srcPod := tc.srcPod
 		if dstIP := tc.pc.Spec.Destination.IP; dstIP != nil {
 			ip := net.ParseIP(*dstIP)
@@ -556,13 +562,13 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 				t.Logf("Ping(%d) '%s' -> '%v' failed: ERROR (%v)", protocol, srcPod, *dstPodIPs, err)
 			}
 		} else if protocol == protocolTCP {
-			for i := 1; i <= 50; i++ {
+			for i := 1; i <= 10; i++ {
 				if err := data.runNetcatCommandFromTestPodWithProtocol(tc.srcPod, data.testNamespace, toolboxContainerName, server, serverPodPort, "tcp"); err != nil {
 					t.Logf("Netcat(TCP) '%s' -> '%v' failed: ERROR (%v)", srcPod, server, err)
 				}
 			}
 		} else if protocol == protocolUDP {
-			for i := 1; i <= 50; i++ {
+			for i := 1; i <= 10; i++ {
 				if err := data.runNetcatCommandFromTestPodWithProtocol(tc.srcPod, data.testNamespace, toolboxContainerName, server, serverPodPort, "udp"); err != nil {
 					t.Logf("Netcat(UDP) '%s' -> '%v' failed: ERROR (%v)", srcPod, server, err)
 				}
@@ -579,12 +585,15 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 			t.Fatalf("Error: PacketCapture Error Reason should be %v, but got %s", tc.expectedReason, pc.Status.Reason)
 		}
 	}
-	captured := pc.Status.NumCapturedPackets
-	if captured != tc.expectedNum {
-		if tc.expectedNum != 0 {
-			t.Fatalf("Error: PacketCapture captured packets count should be %v, but got %v", tc.expectedNum, captured)
+	if tc.expectedPhase == crdv1alpha1.PacketCaptureSucceeded {
+		captured := pc.Status.NumCapturedPackets
+		if captured != tc.expectedNum {
+			if tc.expectedNum != 0 {
+				t.Fatalf("Error: PacketCapture captured packets count should be %v, but got %v", tc.expectedNum, captured)
+			}
 		}
 	}
+
 }
 
 func (data *TestData) waitForPacketCapture(t *testing.T, name string, phase crdv1alpha1.PacketCapturePhase) (*crdv1alpha1.PacketCapture, error) {
