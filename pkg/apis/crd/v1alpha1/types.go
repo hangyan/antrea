@@ -363,7 +363,7 @@ type PodReference struct {
 
 // Source describes the source spec of the packetcapture.
 type Source struct {
-	// Pod is the source Pod.
+	// Pod is the source Pod, exclusive with source `IP`.
 	Pod *PodReference `json:"pod,omitempty"`
 	// IP is the source IPv4 or IPv6 address.
 	IP *string `json:"ip,omitempty"`
@@ -371,9 +371,9 @@ type Source struct {
 
 // Destination describes the destination spec of the PacketCapture.
 type Destination struct {
-	// Pod is the destination Pod, exclusive with destination Service.
+	// Pod is the destination Pod, exclusive with destination `IP`.
 	Pod *PodReference `json:"pod,omitempty"`
-	// IP is the destination IPv4 or IPv6 address.
+	// IP is the source IPv4 or IPv6 address.
 	IP *string `json:"ip,omitempty"`
 }
 
@@ -460,8 +460,8 @@ type PacketCaptureSpec struct {
 	// all kinds of traffic will count.
 	Packet *Packet `json:"packet,omitempty"`
 	// FileServer specifies the sftp url config for a file server. If present, captured packets will be uploaded to this server.
-	// If not, packets file will only be present in the antrea-agent pod.
-	// When capture finished, the path information will be shown in `.status.PacketsFilePath`.
+	// If not, the packet capture results will only be present as a file in the antrea-agent container.
+	// When the capture finished, the path information will be shown in `.status.PacketsFilePath`.
 	FileServer *PacketCaptureFileServer `json:"fileServer,omitempty"`
 }
 
@@ -470,10 +470,10 @@ type PacketCaptureStatus struct {
 	// can be considered as finished.
 	NumCapturedPackets int32 `json:"numCapturedPackets,omitempty"`
 	// PacketsFilePath is the file path where the captured packets are stored. The format is: "<antrea-agent-pod-name>:<path>".
-	// If `.spec.FileServer` is present, this file will also be uploaded to the targeted location. This file
+	// If `.spec.FileServer` is present, this file will also be uploaded to the target location. This file
 	// will be removed after the PacketCapture CR is deleted.
 	PacketsFilePath string `json:"packetsFilePath"`
-	// StartTime is the time when this capture session starts.
+	// StartTime is the time when this capture session started.
 	StartTime *metav1.Time `json:"startTime,omitempty"`
 	// Condition represents the latest available observations of the PacketCapture 's current state.
 	Conditions []PacketCaptureCondition `json:"conditions"`
@@ -482,13 +482,15 @@ type PacketCaptureStatus struct {
 type PacketCaptureConditionType string
 
 const (
-
-	// CaptureCompleted means enough packets has been captured and saved in antrea-agent Pod locally already, but hasn't been
-	// uploaded yet(if a fileserver has been configured).
-	CaptureCompleted PacketCaptureConditionType = "CaptureCompleted"
-
+	// PacketCapturePending means this request is still pending.
+	PacketCapturePending PacketCaptureConditionType = "PacketCapturePedning"
+	// PacketCaptureRunning means antrea is processing this capture request.
+	PacketCaptureRunning PacketCaptureConditionType = "PacketCaptureRunning"
+	// CaptureCompleted means enough packets has been captured and saved in antrea-agent Pod locally already, but results hasn't been
+	// uploaded yet (if a fileserver has been configured).
+	PacketCaptureCompleted PacketCaptureConditionType = "PacketCaptureCompleted"
 	// PacketsUploaded means the captured packets file has been uploaded to the target fileserver.
-	PacketsUploaded PacketCaptureConditionType = "PacketsUploaded"
+	PacketCaptureFileUploaded PacketCaptureConditionType = "PacketCaptureFileUploaded"
 )
 
 type PacketCaptureCondition struct {

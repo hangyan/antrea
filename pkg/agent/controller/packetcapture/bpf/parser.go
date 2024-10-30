@@ -62,7 +62,7 @@ func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, matchPacket *binding.Pa
 	if addr != nil {
 		inst = append(inst, loadIPv4SourceAddress)
 		addrVal := binary.BigEndian.Uint32(addr[len(addr)-4:])
-		// from here we need to check the inst length to cal skipFalse. If no protocol is set, there will be no related bpf instructions.
+		// from here we need to check the inst length to calculate skipFalse. If no protocol is set, there will be no related bpf instructions.
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: addrVal, SkipTrue: 0, SkipFalse: size - uint8(len(inst)) - 2})
 
 	}

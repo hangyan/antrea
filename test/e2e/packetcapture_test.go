@@ -253,14 +253,14 @@ func testPacketCapture(t *testing.T, data *TestData) {
 			expectedStatus: crdv1alpha1.PacketCaptureStatus{
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
-						Type:               crdv1alpha1.CaptureCompleted,
+						Type:               crdv1alpha1.PacketCaptureCompleted,
 						Status:             metav1.ConditionStatus(v1.ConditionFalse),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "CaptureFailed",
 						Message:            "PacketCapture timeout",
 					},
 					{
-						Type:               crdv1alpha1.PacketsUploaded,
+						Type:               crdv1alpha1.PacketCaptureFileUploaded,
 						Status:             metav1.ConditionStatus(v1.ConditionFalse),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "UploadFailed",
@@ -351,13 +351,18 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				NumCapturedPackets: 5,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
-						Type:               crdv1alpha1.CaptureCompleted,
+						Type:               crdv1alpha1.PacketCaptureRunning,
+						Status:             metav1.ConditionStatus(v1.ConditionTrue),
+						LastTransitionTime: metav1.Now(),
+					},
+					{
+						Type:               crdv1alpha1.PacketCaptureCompleted,
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "Succeed",
 					},
 					{
-						Type:               crdv1alpha1.PacketsUploaded,
+						Type:               crdv1alpha1.PacketCaptureFileUploaded,
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "Succeed",
@@ -409,13 +414,13 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				NumCapturedPackets: 5,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
-						Type:               crdv1alpha1.CaptureCompleted,
+						Type:               crdv1alpha1.PacketCaptureCompleted,
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "Succeed",
 					},
 					{
-						Type:               crdv1alpha1.PacketsUploaded,
+						Type:               crdv1alpha1.PacketCaptureFileUploaded,
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "Succeed",
@@ -462,13 +467,13 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				NumCapturedPackets: 5,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
-						Type:               crdv1alpha1.CaptureCompleted,
+						Type:               crdv1alpha1.PacketCaptureCompleted,
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "Succeed",
 					},
 					{
-						Type:               crdv1alpha1.PacketsUploaded,
+						Type:               crdv1alpha1.PacketCaptureFileUploaded,
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "Succeed",
@@ -512,14 +517,14 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 			expectedStatus: crdv1alpha1.PacketCaptureStatus{
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
-						Type:               crdv1alpha1.CaptureCompleted,
+						Type:               crdv1alpha1.PacketCaptureCompleted,
 						Status:             metav1.ConditionStatus(v1.ConditionFalse),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "CaptureFailed",
 						Message:            fmt.Sprintf("failed to get Pod %s/%s: pods \"%s\" not found", data.testNamespace, nonExistPodName, nonExistPodName),
 					},
 					{
-						Type:               crdv1alpha1.PacketsUploaded,
+						Type:               crdv1alpha1.PacketCaptureFileUploaded,
 						Status:             metav1.ConditionStatus(v1.ConditionFalse),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "UploadFailed",
@@ -646,7 +651,7 @@ func (data *TestData) waitForPacketCapture(t *testing.T, name string, specTimeou
 		if err != nil {
 			return false, nil
 		}
-		if len(pc.Status.Conditions) > 0 {
+		if isPacketCaptureReady(pc) {
 			return true, nil
 		}
 		return false, nil
@@ -658,6 +663,20 @@ func (data *TestData) waitForPacketCapture(t *testing.T, name string, specTimeou
 		return nil, err
 	}
 	return pc, nil
+}
+
+func isPacketCaptureReady(pc *crdv1alpha1.PacketCapture) bool {
+	if len(pc.Status.Conditions) == 0 {
+		return false
+	}
+
+	for _, cond := range pc.Status.Conditions {
+		if cond.Type == crdv1alpha1.PacketCaptureCompleted {
+			return true
+		}
+	}
+	return false
+
 }
 
 func conditionEqualsIgnoreLastTransitionTime(a, b crdv1alpha1.PacketCaptureCondition) bool {
