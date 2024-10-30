@@ -77,7 +77,7 @@ const (
 	fileServerAuthSecretName      = "antrea-packetcapture-fileserver-auth"
 	fileServerAuthSecretNamespace = "kube-system"
 
-	// max packet size for pcap capture.
+	// Max packet size for pcap capture.
 	snapshotLen = 65536
 )
 
@@ -91,13 +91,13 @@ func getPacketDirectory() string {
 }
 
 type packetCaptureState struct {
-	// name is the PacketCapture name
+	// name is the PacketCapture name.
 	name string
 	// numCapturedPackets record how many packets have been captured. Due to the RateLimiter,
 	// this maybe not be realtime data.
 	numCapturedPackets int32
-	// maxNumCapturedPackets is target number limit for our capture. If numCapturedPackets=maxNumCapturedPackets, means
-	// the PacketCapture is finished successfully.
+	// maxNumCapturedPackets is target number limit for our capture. When numCapturedPackets == maxNumCapturedPackets, it means that 
+	// the PacketCapture is done successfully.
 	maxNumCapturedPackets int32
 	// updateRateLimiter controls the frequency of the updates to PacketCapture status.
 	updateRateLimiter *rate.Limiter
@@ -186,7 +186,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	err := defaultFS.MkdirAll(packetDirectory, 0755)
 	if err != nil {
-		klog.ErrorS(err, "Couldn't create directory for storing captured packets", "directory", packetDirectory)
+		klog.ErrorS(err, "Couldn't create the directory for storing captured packets", "directory", packetDirectory)
 		return
 	}
 
@@ -273,8 +273,8 @@ func getPacketFileAndWriter(name string) (afero.File, *pcapgo.NgWriter, error) {
 	return file, writer, nil
 }
 
-// getTargetCaptureDevice trying to locate the target device for capture. If the target pod is not exist on the current node,
-// means this node will not perform the capture.
+// getTargetCaptureDevice is trying to locate the target device for packet capture. If the target Pod does not exist on the current Node,
+//  the agent on this Node will not perform the capture.
 func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) *string {
 	var pod, ns string
 	if pc.Spec.Source.Pod != nil {

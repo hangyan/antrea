@@ -26,9 +26,9 @@ import (
 	binding "antrea.io/antrea/pkg/ovs/openflow"
 )
 
-// CompilePacketFilter compile our crd spec to bpf instructions. For now, we only focus on
-// ipv4 traffic. Compare to raw BPF filter supported by libpcap, we only need to support
-// limited usercases so an expression parser is not needed.
+// CompilePacketFilter compile the CRD spec to bpf instructions. For now, we only focus on
+// ipv4 traffic. Compare to the raw BPF filter supported by libpcap, we only need to support
+// limited user cases, so an expression parser is not needed.
 func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, matchPacket *binding.Packet) []bpf.Instruction {
 	size := uint8(calInstructionsSize(packetSpec))
 
@@ -98,7 +98,7 @@ func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, matchPacket *binding.Pa
 
 }
 
-// we need to figure out how long the instruction list will be first. will be used in the instructions'jump case.
+// We need to figure out how long the instruction list will be first. IT will be used in the instructions' jump case.
 // For example, If you provide all the filter supported by `PacketCapture`, it will ends with the following BPF filter string:
 // 'ip proto 6 and src host 127.0.0.1 and dst host 127.0.0.1 and src port 123 and dst port 124'
 // And using `tcpdump -i <device> '<filter>' -d` will generate the following BPF instructions:
