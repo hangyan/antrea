@@ -2911,10 +2911,6 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-        - jsonPath: .status.phase
-          description: The phase of the PacketCapture.
-          name: Phase
-          type: string
         - jsonPath: .spec.source.pod
           description: The name of the source Pod.
           name: Source-Pod
@@ -3043,7 +3039,6 @@ spec:
                               type: integer
                               minimum: 1
                               maximum: 65535
-
                 timeout:
                   type: integer
                   minimum: 1
@@ -3977,8 +3972,11 @@ data:
     # be enabled, otherwise this flag will not take effect.
     #  CleanupStaleUDPSvcConntrack: true
 
-    # Enable traceflow which provides packet tracing feature to diagnose network issue.
+    # Enable Traceflow which provides packet tracing feature to diagnose network issue.
     #  Traceflow: true
+
+    # Enable PacketCapture feature which supports capturing packets to diagnose network issues.
+    #  PacketCapture: false
 
     # Enable NodePortLocal feature to make the Pods reachable externally through NodePort
     #  NodePortLocal: true
@@ -4564,6 +4562,14 @@ rules:
   - apiGroups:
       - ""
     resources:
+      - secrets
+    resourceNames:
+      - antrea-packetcapture-fileserver-auth
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
       - endpoints
       - services
       - namespaces
@@ -4682,6 +4688,20 @@ rules:
       - patch
       - create
       - delete
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetcaptures
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups:
+      - crd.antrea.io
+    resources:
+      - packetcaptures/status
+    verbs:
+      - update
   - apiGroups:
       - crd.antrea.io
     resources:
@@ -5375,7 +5395,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: f5cf00de39a27790a7e158a3eca79123de415b3b09d389ac984b74027bbfaade
+        checksum/config: 7e42a403d388e2ed556d9b41f4af83917eadd0863d4e2bef67353f5adb2ef6c3
       labels:
         app: antrea
         component: antrea-agent
@@ -5611,7 +5631,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: f5cf00de39a27790a7e158a3eca79123de415b3b09d389ac984b74027bbfaade
+        checksum/config: 7e42a403d388e2ed556d9b41f4af83917eadd0863d4e2bef67353f5adb2ef6c3
       labels:
         app: antrea
         component: antrea-controller

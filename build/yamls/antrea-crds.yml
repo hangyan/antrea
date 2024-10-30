@@ -2884,10 +2884,6 @@ spec:
       served: true
       storage: true
       additionalPrinterColumns:
-        - jsonPath: .status.phase
-          description: The phase of the PacketCapture.
-          name: Phase
-          type: string
         - jsonPath: .spec.source.pod
           description: The name of the source Pod.
           name: Source-Pod
@@ -3016,7 +3012,6 @@ spec:
                               type: integer
                               minimum: 1
                               maximum: 65535
-
                 timeout:
                   type: integer
                   minimum: 1

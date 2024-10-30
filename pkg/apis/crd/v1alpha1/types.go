@@ -414,14 +414,6 @@ type PacketCaptureFirstNConfig struct {
 	Number int32 `json:"number"`
 }
 
-type PacketCapturePhase string
-
-const (
-	PacketCaptureRunning   PacketCapturePhase = "Running"
-	PacketCaptureSucceeded PacketCapturePhase = "Succeeded"
-	PacketCaptureFailed    PacketCapturePhase = "Failed"
-)
-
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type PacketCaptureList struct {
@@ -490,17 +482,13 @@ type PacketCaptureStatus struct {
 type PacketCaptureConditionType string
 
 const (
-	// CapturePending means Antrea Agent hasn't started to process this request yet.
-	CapturePending PacketCaptureConditionType = "Pending"
-	// CaptureStarted means antrea started to process this capture request.
-	CaptureStarted PacketCaptureConditionType = "Started"
+
 	// CaptureCompleted means enough packets has been captured and saved in antrea-agent Pod locally already, but hasn't been
 	// uploaded yet(if a fileserver has been configured).
-	CaptureCompleted PacketCaptureConditionType = "Completed"
-	// CaptureFailed means failed to capture packets, either because timeout or other issues.
-	CaptureFailed PacketCaptureConditionType = "Failed"
+	CaptureCompleted PacketCaptureConditionType = "CaptureCompleted"
+
 	// PacketsUploaded means the captured packets file has been uploaded to the target fileserver.
-	PacketsUploaded PacketCaptureConditionType = "PacketUploaded"
+	PacketsUploaded PacketCaptureConditionType = "PacketsUploaded"
 )
 
 type PacketCaptureCondition struct {
