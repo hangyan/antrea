@@ -28,8 +28,8 @@ data:
 When starting a new packet capture, you can provide the following information to identify
 the target traffic flow:
 
-* Source Pod
-* Destination Pod, Service or IP address
+* Source Pod, or IP address
+* Destination Pod, or IP address
 * Transport protocol (TCP/UDP/ICMP)
 * Transport ports
 
@@ -64,7 +64,7 @@ spec:
       namespace: default
       name: frontend
   destination:
-  # Available options for destination could be `pod` (a Pod), `ip` (an specific IP address), or `service` (a Service name). These 3 options are mutually exclusive.
+  # Available options for source/destination could be `pod` (a Pod), `ip` (a specific IP address). These 2 options are mutually exclusive.
     pod:
       namespace: default
       name: backend

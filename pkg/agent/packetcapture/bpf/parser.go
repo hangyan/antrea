@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"golang.org/x/net/bpf"
-
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
@@ -36,19 +35,18 @@ func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, matchPacket *binding.Pa
 	inst := []bpf.Instruction{loadEtherKind}
 	// skip means how many instructions we need to skip if the compare fails.
 	// for example, for now we have 2 instructions, and the total size is 17, if ipv4
-	// check failed, we need to jump to to the end (ret #0), skip 17-3=14 instructions.
+	// check failed, we need to jump to the end (ret #0), skip 17-3=14 instructions.
 	// if check succeed, skipTrue means we jump to the next instruction.
 	inst = append(inst, compareProtocolIP4(0, size-3))
 
-	packet := packetSpec
-	if packet != nil {
-		if packet.Protocol != nil {
+	if packetSpec != nil {
+		if packetSpec.Protocol != nil {
 			var proto uint32
-			if packet.Protocol.Type == intstr.Int {
-				proto = uint32(packet.Protocol.IntVal)
+			if packetSpec.Protocol.Type == intstr.Int {
+				proto = uint32(packetSpec.Protocol.IntVal)
 			} else {
 				//TODO: check this earlier
-				if val, ok := protocolMap[strings.ToLower(packet.Protocol.StrVal)]; ok {
+				if val, ok := protocolMap[strings.ToLower(packetSpec.Protocol.StrVal)]; ok {
 					proto = val
 				}
 			}
