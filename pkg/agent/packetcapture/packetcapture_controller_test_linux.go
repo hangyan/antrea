@@ -34,7 +34,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"antrea.io/antrea/pkg/agent/config"
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	"antrea.io/antrea/pkg/agent/util"
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
@@ -89,7 +88,7 @@ var (
 	secret1 = v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fileServerAuthSecretName,
-			Namespace: fileServerAuthSecretNamespace,
+			Namespace: "kube-system",
 		},
 		Data: map[string][]byte{
 			"username": []byte("username"),
@@ -177,7 +176,6 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 		crdClient,
 		packetCaptureInformer,
 		ifaceStore,
-		&config.NodeConfig{Name: "test-node"},
 	)
 	pcController.sftpUploader = &testUploader{}
 
@@ -498,31 +496,6 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	pcc.informerFactory.WaitForCacheSync(stopCh)
 	go pcc.Run(stopCh)
 	time.Sleep(300 * time.Millisecond)
-}
-
-func TestPacketCaptureTimeoutCheck(t *testing.T) {
-	pcs := []struct {
-		name           string
-		pc             *crdv1alpha1.PacketCapture
-		expectedResult bool
-	}{
-		{
-			name: "set-start-time",
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{
-					CreationTimestamp: metav1.Now(),
-				},
-				Status: crdv1alpha1.PacketCaptureStatus{},
-			},
-			expectedResult: false,
-		},
-	}
-
-	for _, pc := range pcs {
-		t.Run(pc.name, func(t *testing.T) {
-			assert.Equal(t, isPacketCaptureTimeout(pc.pc), pc.expectedResult)
-		})
-	}
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {

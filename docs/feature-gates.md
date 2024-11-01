@@ -537,3 +537,7 @@ experienced by Pod traffic.
 
 `PacketCapture` allows user to capture live traffic packets from specified flows for further analysis.
 Refer to this [document](packetcapture-guide.md) for more information.
+
+#### Requirements for this Feature
+
+This feature is only supported on Linux for now.

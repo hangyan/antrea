@@ -17,7 +17,6 @@ package packetcapture
 import (
 	clientset "k8s.io/client-go/kubernetes"
 
-	"antrea.io/antrea/pkg/agent/config"
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	clientsetversioned "antrea.io/antrea/pkg/client/clientset/versioned"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
@@ -31,7 +30,6 @@ func NewPacketCaptureController(
 	crdClient clientsetversioned.Interface,
 	packetCaptureInformer crdinformers.PacketCaptureInformer,
 	interfaceStore interfacestore.InterfaceStore,
-	nodeConfig *config.NodeConfig,
 ) *Controller {
 	return &Controller{}
 }

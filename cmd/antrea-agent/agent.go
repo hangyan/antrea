@@ -45,7 +45,6 @@ import (
 	"antrea.io/antrea/pkg/agent/controller/networkpolicy"
 	"antrea.io/antrea/pkg/agent/controller/networkpolicy/l7engine"
 	"antrea.io/antrea/pkg/agent/controller/noderoute"
-	"antrea.io/antrea/pkg/agent/controller/packetcapture"
 	"antrea.io/antrea/pkg/agent/controller/serviceexternalip"
 	"antrea.io/antrea/pkg/agent/controller/traceflow"
 	"antrea.io/antrea/pkg/agent/controller/trafficcontrol"
@@ -61,6 +60,7 @@ import (
 	"antrea.io/antrea/pkg/agent/nodeip"
 	npl "antrea.io/antrea/pkg/agent/nodeportlocal"
 	"antrea.io/antrea/pkg/agent/openflow"
+	"antrea.io/antrea/pkg/agent/packetcapture"
 	"antrea.io/antrea/pkg/agent/proxy"
 	proxytypes "antrea.io/antrea/pkg/agent/proxy/types"
 	"antrea.io/antrea/pkg/agent/querier"
@@ -659,7 +659,6 @@ func run(o *Options) error {
 			crdClient,
 			packetCaptureInformer,
 			ifaceStore,
-			nodeConfig,
 		)
 	}
 

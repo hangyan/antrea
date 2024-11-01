@@ -28,7 +28,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"antrea.io/antrea/pkg/apis/controlplane"
-	"antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
 const (
@@ -79,7 +78,12 @@ func newTestClient(coreObjects []runtime.Object, crdObjects []runtime.Object) *t
 	}
 }
 
-func TestParseBundleAuth(t *testing.T) {
+type testAuthConfig struct {
+	AuthType   FileServerAuthType
+	AuthSecret *corev1.SecretReference
+}
+
+func TestParseFileServerAuth(t *testing.T) {
 	ns := "ns-auth"
 	apiKey := testKeyString
 	token := testTokenString
@@ -102,43 +106,43 @@ func TestParseBundleAuth(t *testing.T) {
 	testClient.waitForSync(stopCh)
 
 	for _, tc := range []struct {
-		authentication v1alpha1.BundleServerAuthConfiguration
+		authentication testAuthConfig
 		expectedError  string
-		expectedAuth   *controlplane.BundleServerAuthConfiguration
+		expectedAuth   *FileServerAuthConfiguration
 	}{
 		{
-			authentication: v1alpha1.BundleServerAuthConfiguration{
-				AuthType: v1alpha1.APIKey,
+			authentication: testAuthConfig{
+				AuthType: APIKey,
 				AuthSecret: &corev1.SecretReference{
 					Namespace: ns,
 					Name:      "s1",
 				},
 			},
-			expectedAuth: &controlplane.BundleServerAuthConfiguration{
+			expectedAuth: &FileServerAuthConfiguration{
 				APIKey: testKeyString,
 			},
 		},
 		{
-			authentication: v1alpha1.BundleServerAuthConfiguration{
-				AuthType: v1alpha1.BearerToken,
+			authentication: testAuthConfig{
+				AuthType: BearerToken,
 				AuthSecret: &corev1.SecretReference{
 					Namespace: ns,
 					Name:      "s2",
 				},
 			},
-			expectedAuth: &controlplane.BundleServerAuthConfiguration{
+			expectedAuth: &FileServerAuthConfiguration{
 				BearerToken: testTokenString,
 			},
 		},
 		{
-			authentication: v1alpha1.BundleServerAuthConfiguration{
-				AuthType: v1alpha1.BasicAuthentication,
+			authentication: testAuthConfig{
+				AuthType: BasicAuthentication,
 				AuthSecret: &corev1.SecretReference{
 					Namespace: ns,
 					Name:      "s3",
 				},
 			},
-			expectedAuth: &controlplane.BundleServerAuthConfiguration{
+			expectedAuth: &FileServerAuthConfiguration{
 				BasicAuthentication: &controlplane.BasicAuthentication{
 					Username: usr,
 					Password: pwd,
@@ -146,8 +150,8 @@ func TestParseBundleAuth(t *testing.T) {
 			},
 		},
 		{
-			authentication: v1alpha1.BundleServerAuthConfiguration{
-				AuthType: v1alpha1.BearerToken,
+			authentication: testAuthConfig{
+				AuthType: BearerToken,
 				AuthSecret: &corev1.SecretReference{
 					Namespace: ns,
 					Name:      "invalid-secret",
@@ -156,8 +160,8 @@ func TestParseBundleAuth(t *testing.T) {
 			expectedError: fmt.Sprintf("not found authentication in Secret %s/invalid-secret with key %s", ns, secretKeyWithBearerToken),
 		},
 		{
-			authentication: v1alpha1.BundleServerAuthConfiguration{
-				AuthType: v1alpha1.BearerToken,
+			authentication: testAuthConfig{
+				AuthType: BearerToken,
 				AuthSecret: &corev1.SecretReference{
 					Namespace: ns,
 					Name:      "not-exist",
@@ -166,14 +170,14 @@ func TestParseBundleAuth(t *testing.T) {
 			expectedError: fmt.Sprintf("unable to get Secret with name not-exist in Namespace %s", ns),
 		},
 		{
-			authentication: v1alpha1.BundleServerAuthConfiguration{
-				AuthType:   v1alpha1.APIKey,
+			authentication: testAuthConfig{
+				AuthType:   APIKey,
 				AuthSecret: nil,
 			},
 			expectedError: "authentication is not specified",
 		},
 	} {
-		auth, err := ParseBundleAuth(tc.authentication, testClient.client)
+		auth, err := ParseFileServerAuth(tc.authentication.AuthType, tc.authentication.AuthSecret, testClient.client)
 		if tc.expectedError != "" {
 			assert.Contains(t, err.Error(), tc.expectedError)
 		} else {

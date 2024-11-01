@@ -391,12 +391,16 @@ func (c *Controller) createInternalSupportBundleCollection(bundle *v1alpha1.Supp
 	}
 	nodeSpan := nodeNames.Union(externalNodeNames)
 	// Get authentication from the Secret provided in authentication field in the CRD
-	authentication, err := ftp.ParseBundleAuth(bundle.Spec.Authentication, c.kubeClient)
+	authentication, err := ftp.ParseFileServerAuth(ftp.FileServerAuthType(bundle.Spec.Authentication.AuthType), bundle.Spec.Authentication.AuthSecret, c.kubeClient)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get authentication defined in the SupportBundleCollection CR", "name", bundle.Name, "authentication", bundle.Spec.Authentication)
 		return nil, err
 	}
-	internalBundleCollection := c.addInternalSupportBundleCollection(bundle, nodeSpan, authentication, metav1.NewTime(expiredAt))
+	internalBundleCollection := c.addInternalSupportBundleCollection(bundle, nodeSpan, &controlplane.BundleServerAuthConfiguration{
+		BearerToken:         authentication.BearerToken,
+		APIKey:              authentication.APIKey,
+		BasicAuthentication: authentication.BasicAuthentication,
+	}, metav1.NewTime(expiredAt))
 	// Process the support bundle collection when time is up, this will create a CollectionFailure condition if the
 	// bundle collection is not completed in time because any Agent fails to upload the files and does not report
 	// the failure.

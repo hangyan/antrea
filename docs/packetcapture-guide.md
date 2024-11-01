@@ -39,10 +39,11 @@ located in the same Namespace where Antrea is deployed must exist and carry the 
 You can also create the Secret using the following `kubectl` command:
 
 ```bash
-kubectl create secret generic antrea-packetcapture-fileserver-auth -n kube-system --from-literal=username='<username>'  --from-literal=password='<password>'
+kubectl create secret generic antrea-packetcapture-fileserver-auth -n kube-system --from-literal=username='<username>' --from-literal=password='<password>'
 ```
 
-If no `fileServer` field is present in the CR, the captured packets file will be saved in the antrea-agent Pod. The default file path will be `/tmp/antrea/packetcapture/packets/<PacketCapture_CR_Name>.pcapng`.
+If no `fileServer` field is present in the CR, the captured packets file will be saved in the antrea-agent Pod (the one on the same node with source or destination pod in the CR).
+The default file path will be `/tmp/antrea/packetcapture/packets/<PacketCapture_CR_Name>.pcapng`.
 
 And here is an example of `PacketCapture` CR:
 
@@ -73,11 +74,6 @@ spec:
     transportHeader:
       tcp:
         dstPort: 8080 # Destination port needs to be set when the protocol is TCP/UDP.
-status:
-  numCapturedPackets: 5
-  # The path of the packets file that is uploaded to the target file server, in the format of: <antrea-agent-pod-name>:<path>.
-  # The PacketCapture CR Name is used as the file name
-  packetsFilePath: antrea-agent-z4zgw:/tmp/antrea/packetcapture/packets/pc-test.pcapng
 ```
 
 The CR above starts a new packet capture of TCP flows from a Pod named `frontend`

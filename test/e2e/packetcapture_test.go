@@ -18,11 +18,11 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -49,7 +49,8 @@ var (
 	icmpProto = intstr.FromInt32(1)
 	udpProto  = intstr.FromInt32(17)
 
-	testServerPort int32 = 80
+	testServerPort   int32 = 80
+	testNonExistPort int32 = 8085
 
 	pcTimeoutReason = "PacketCapture timeout"
 	pcShortTimeout  = uint16(5)
@@ -233,7 +234,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							Number: 5,
+							Number: 500,
 						},
 					},
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
@@ -244,7 +245,7 @@ func testPacketCapture(t *testing.T, data *TestData) {
 						IPFamily: v1.IPv4Protocol,
 						TransportHeader: crdv1alpha1.TransportHeader{
 							TCP: &crdv1alpha1.TCPHeader{
-								DstPort: &testServerPort,
+								DstPort: &testNonExistPort,
 							},
 						},
 					},
@@ -265,6 +266,58 @@ func testPacketCapture(t *testing.T, data *TestData) {
 						LastTransitionTime: metav1.Now(),
 						Reason:             "UploadFailed",
 						Message:            "PacketCapture timeout",
+					},
+				},
+			},
+		},
+		{
+
+			name:      nonExistPodName,
+			ipVersion: 4,
+			srcPod:    pcToolboxPodName,
+			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: randName(fmt.Sprintf("%s-%s-", data.testNamespace, nonExistPodName)),
+				},
+				Spec: crdv1alpha1.PacketCaptureSpec{
+					Source: crdv1alpha1.Source{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      pcToolboxPodName,
+						},
+					},
+					Destination: crdv1alpha1.Destination{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: data.testNamespace,
+							Name:      nonExistPodName,
+						},
+					},
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
+					},
+					FileServer: &crdv1alpha1.PacketCaptureFileServer{
+						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
+					},
+				},
+			},
+
+			expectedStatus: crdv1alpha1.PacketCaptureStatus{
+				Conditions: []crdv1alpha1.PacketCaptureCondition{
+					{
+						Type:               crdv1alpha1.PacketCaptureCompleted,
+						Status:             metav1.ConditionStatus(v1.ConditionFalse),
+						LastTransitionTime: metav1.Now(),
+						Reason:             "CaptureFailed",
+						Message:            fmt.Sprintf("failed to get Pod %s/%s: pods \"%s\" not found", data.testNamespace, nonExistPodName, nonExistPodName),
+					},
+					{
+						Type:               crdv1alpha1.PacketCaptureFileUploaded,
+						Status:             metav1.ConditionStatus(v1.ConditionFalse),
+						LastTransitionTime: metav1.Now(),
+						Reason:             "UploadFailed",
+						Message:            fmt.Sprintf("failed to get Pod %s/%s: pods \"%s\" not found", data.testNamespace, nonExistPodName, nonExistPodName),
 					},
 				},
 			},
@@ -290,7 +343,6 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 	}
 	node1 := nodeName(nodeIdx)
 
-	node1Pods, _, _ := createTestAgnhostPods(t, data, 3, data.testNamespace, node1)
 	err := createUDPServerPod(udpServerPodName, data.testNamespace, serverPodPort, node1)
 	defer data.DeletePodAndWait(defaultTimeout, udpServerPodName, data.testNamespace)
 	require.NoError(t, err)
@@ -301,10 +353,6 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 	err = data.createToolboxPodOnNode(pcToolboxPodName, data.testNamespace, node1, false)
 	defer data.DeletePodAndWait(defaultTimeout, pcToolboxPodName, data.testNamespace)
 	require.NoError(t, err)
-
-	// Give a little time for Windows containerd Nodes to set up OVS.
-	// Containerd configures port asynchronously, which could cause execution time of installing flow longer than docker.
-	time.Sleep(time.Second * 1)
 
 	testcases := []pcTestCase{
 		{
@@ -348,13 +396,8 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 			},
 			expectedStatus: crdv1alpha1.PacketCaptureStatus{
-				NumCapturedPackets: 5,
+				NumberCaptured: 5,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
-					{
-						Type:               crdv1alpha1.PacketCaptureRunning,
-						Status:             metav1.ConditionStatus(v1.ConditionTrue),
-						LastTransitionTime: metav1.Now(),
-					},
 					{
 						Type:               crdv1alpha1.PacketCaptureCompleted,
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
@@ -411,7 +454,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 			},
 			expectedStatus: crdv1alpha1.PacketCaptureStatus{
-				NumCapturedPackets: 5,
+				NumberCaptured: 5,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
 						Type:               crdv1alpha1.PacketCaptureCompleted,
@@ -431,7 +474,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 		{
 			name:      "ipv4-icmp",
 			ipVersion: 4,
-			srcPod:    node1Pods[0],
+			srcPod:    pcToolboxPodName,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: randName(fmt.Sprintf("%s-ipv4-icmp-", data.testNamespace)),
@@ -440,13 +483,13 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 					Source: crdv1alpha1.Source{
 						Pod: &crdv1alpha1.PodReference{
 							Namespace: data.testNamespace,
-							Name:      node1Pods[0],
+							Name:      pcToolboxPodName,
 						},
 					},
 					Destination: crdv1alpha1.Destination{
 						Pod: &crdv1alpha1.PodReference{
 							Namespace: data.testNamespace,
-							Name:      node1Pods[1],
+							Name:      tcpServerPodName,
 						},
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
@@ -464,7 +507,7 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 				},
 			},
 			expectedStatus: crdv1alpha1.PacketCaptureStatus{
-				NumCapturedPackets: 5,
+				NumberCaptured: 5,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
 						Type:               crdv1alpha1.PacketCaptureCompleted,
@@ -477,58 +520,6 @@ func testPacketCaptureBasic(t *testing.T, data *TestData) {
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "Succeed",
-					},
-				},
-			},
-		},
-		{
-
-			name:      nonExistPodName,
-			ipVersion: 4,
-			srcPod:    node1Pods[0],
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: randName(fmt.Sprintf("%s-%s-", data.testNamespace, nonExistPodName)),
-				},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					Source: crdv1alpha1.Source{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: data.testNamespace,
-							Name:      node1Pods[0],
-						},
-					},
-					Destination: crdv1alpha1.Destination{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: data.testNamespace,
-							Name:      nonExistPodName,
-						},
-					},
-					CaptureConfig: crdv1alpha1.CaptureConfig{
-						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							Number: 5,
-						},
-					},
-					FileServer: &crdv1alpha1.PacketCaptureFileServer{
-						URL: fmt.Sprintf("sftp://%s:30010/upload", controlPlaneNodeIPv4()),
-					},
-				},
-			},
-
-			expectedStatus: crdv1alpha1.PacketCaptureStatus{
-				Conditions: []crdv1alpha1.PacketCaptureCondition{
-					{
-						Type:               crdv1alpha1.PacketCaptureCompleted,
-						Status:             metav1.ConditionStatus(v1.ConditionFalse),
-						LastTransitionTime: metav1.Now(),
-						Reason:             "CaptureFailed",
-						Message:            fmt.Sprintf("failed to get Pod %s/%s: pods \"%s\" not found", data.testNamespace, nonExistPodName, nonExistPodName),
-					},
-					{
-						Type:               crdv1alpha1.PacketCaptureFileUploaded,
-						Status:             metav1.ConditionStatus(v1.ConditionFalse),
-						LastTransitionTime: metav1.Now(),
-						Reason:             "UploadFailed",
-						Message:            fmt.Sprintf("failed to get Pod %s/%s: pods \"%s\" not found", data.testNamespace, nonExistPodName, nonExistPodName),
 					},
 				},
 			},
@@ -569,7 +560,7 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 	}
 	var dstPodIPs *PodIPs
 	if dstPodName != nonExistPodName && dstPodName != "" {
-		// wait for pods to be ready first , or the pc will skip install flow
+		// wait for pods to be ready first
 		podIPs := waitForPodIPs(t, data, []PodInfo{{dstPodName, getOSString(), "", data.testNamespace}})
 		dstPodIPs = podIPs[dstPodName]
 	}
@@ -599,10 +590,16 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 		if tc.ipVersion == 6 {
 			server = dstPodIPs.IPv6.String()
 		}
+		// wait for CR running.
+
+		_, err := data.waitForPacketCapture(t, tc.pc.Name, 0, isPacketCaptureRunning)
+		if err != nil {
+			t.Fatalf("Error: Waiting PacketCapture to Running failed: %v", err)
+		}
 		// Send an ICMP echo packet from the source Pod to the destination.
 		if protocol == protocolICMP || protocol == protocolICMPv6 {
 			if err := data.RunPingCommandFromTestPod(PodInfo{srcPod, getOSString(), "", data.testNamespace},
-				data.testNamespace, dstPodIPs, agnhostContainerName, 10, 0, false); err != nil {
+				data.testNamespace, dstPodIPs, toolboxContainerName, 10, 0, false); err != nil {
 				t.Logf("Ping(%d) '%s' -> '%v' failed: ERROR (%v)", protocol, srcPod, *dstPodIPs, err)
 			}
 		} else if protocol == protocolTCP {
@@ -628,30 +625,43 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 
 	if strings.Contains(tc.name, "timeout") {
 		// wait more for status update.
-		tv := *timeout + uint16(5)
+		tv := *timeout + uint16(10)
 		timeout = &tv
 	}
 
-	pc, err := data.waitForPacketCapture(t, tc.pc.Name, int(*timeout))
+	pc, err := data.waitForPacketCapture(t, tc.pc.Name, int(*timeout), isPacketCaptureReady)
 	if err != nil {
 		t.Fatalf("Error: Get PacketCapture failed: %v", err)
 	}
-	pc.Status.StartTime = tc.expectedStatus.StartTime
-	tc.expectedStatus.PacketsFilePath = pc.Status.PacketsFilePath
-	assert.True(t, packetCaptureStatusEqual(pc.Status, tc.expectedStatus))
+	tc.expectedStatus.FilePath = pc.Status.FilePath
 
+	// remove pending condition as it's random
+	newCond := []crdv1alpha1.PacketCaptureCondition{}
+	for _, cond := range pc.Status.Conditions {
+		if cond.Type == crdv1alpha1.PacketCapturePending || cond.Type == crdv1alpha1.PacketCaptureRunning {
+			continue
+		}
+		newCond = append(newCond, cond)
+	}
+	pc.Status.Conditions = newCond
+	if !packetCaptureStatusEqual(pc.Status, tc.expectedStatus) {
+		t.Errorf("CR status not match, actual: %+v, expected: %+v", pc.Status, tc.expectedStatus)
+	}
 }
 
-func (data *TestData) waitForPacketCapture(t *testing.T, name string, specTimeout int) (*crdv1alpha1.PacketCapture, error) {
+func (data *TestData) waitForPacketCapture(t *testing.T, name string, specTimeout int, fn func(*crdv1alpha1.PacketCapture) bool) (*crdv1alpha1.PacketCapture, error) {
 	var pc *crdv1alpha1.PacketCapture
 	var err error
-	var timeout = time.Duration(specTimeout) * time.Second
+	var timeout = time.Duration(60) * time.Second
+	if specTimeout > 0 {
+		timeout = time.Duration(specTimeout) * time.Second
+	}
 	if err = wait.PollUntilContextTimeout(context.Background(), defaultInterval, timeout, true, func(ctx context.Context) (bool, error) {
 		pc, err = data.crdClient.CrdV1alpha1().PacketCaptures().Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
-		if isPacketCaptureReady(pc) {
+		if fn(pc) {
 			return true, nil
 		}
 		return false, nil
@@ -679,6 +689,20 @@ func isPacketCaptureReady(pc *crdv1alpha1.PacketCapture) bool {
 
 }
 
+func isPacketCaptureRunning(pc *crdv1alpha1.PacketCapture) bool {
+	if len(pc.Status.Conditions) == 0 {
+		return false
+	}
+
+	for _, cond := range pc.Status.Conditions {
+		if cond.Type == crdv1alpha1.PacketCaptureRunning && cond.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+
+}
+
 func conditionEqualsIgnoreLastTransitionTime(a, b crdv1alpha1.PacketCaptureCondition) bool {
 	a1 := a
 	a1.LastTransitionTime = metav1.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -696,6 +720,14 @@ func packetCaptureStatusEqual(oldStatus, newStatus crdv1alpha1.PacketCaptureStat
 }
 
 func conditionSliceEqualsIgnoreLastTransitionTime(as, bs []crdv1alpha1.PacketCaptureCondition) bool {
+
+	sort.Slice(as, func(i, j int) bool {
+		return as[i].Type < as[j].Type
+	})
+	sort.Slice(bs, func(i, j int) bool {
+		return bs[i].Type < bs[j].Type
+	})
+
 	if len(as) != len(bs) {
 		return false
 	}

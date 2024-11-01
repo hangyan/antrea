@@ -41,33 +41,36 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	klog "k8s.io/klog/v2"
 
-	"antrea.io/antrea/pkg/agent/config"
-	"antrea.io/antrea/pkg/agent/controller/packetcapture/bpf"
 	"antrea.io/antrea/pkg/agent/interfacestore"
+	"antrea.io/antrea/pkg/agent/packetcapture/bpf"
 	"antrea.io/antrea/pkg/agent/util"
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	clientsetversioned "antrea.io/antrea/pkg/client/clientset/versioned"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
 	crdlisters "antrea.io/antrea/pkg/client/listers/crd/v1alpha1"
 	binding "antrea.io/antrea/pkg/ovs/openflow"
+	"antrea.io/antrea/pkg/util/env"
 	"antrea.io/antrea/pkg/util/ftp"
 )
 
-type StorageProtocolType string
+type storageProtocolType string
 
 const (
-	sftpProtocol StorageProtocolType = "sftp"
+	sftpProtocol storageProtocolType = "sftp"
 )
 
 const (
-	controllerName               = "AntreaAgentPacketCaptureController"
+	controllerName               = "PacketCaptureController"
 	resyncPeriod   time.Duration = 0
 
 	minRetryDelay = 5 * time.Second
 	maxRetryDelay = 300 * time.Second
 
-	defaultWorkers = 4
+	defaultWorkers = 2
 
+	// defines how many capture request we can handle concurrently.
+	maxConcurrentCaptures = 4
+	// waiting captures will be marked as Pending unitl they can be processed.
 	maxWaitingCaptures = 32
 
 	// reason for timeout
@@ -76,33 +79,37 @@ const (
 
 	captureStatusUpdatePeriod = 10 * time.Second
 
-	// PacketCapture uses a dedicated secret object to store auth info for file server.
+	// PacketCapture uses a dedicated Secret object to store authentication information for a file server.
 	// #nosec G101
-	fileServerAuthSecretName      = "antrea-packetcapture-fileserver-auth"
-	fileServerAuthSecretNamespace = "kube-system"
+	fileServerAuthSecretName = "antrea-packetcapture-fileserver-auth"
 
 	// Max packet size for pcap capture.
-	snapshotLen = 65536
+	maxSnapshotBytes = 65536
+)
+
+type packetCapturePhase string
+
+const (
+	packetCapturePhaseUnknown   packetCapturePhase = ""
+	packetCapturePhasePending   packetCapturePhase = "Pending"
+	packetCapturePhaseRunning   packetCapturePhase = "Running"
+	packetCapturePhaseCompleted packetCapturePhase = "Completed"
 )
 
 var (
-	packetDirectory = getPacketDirectory()
+	packetDirectory = filepath.Join(os.TempDir(), "antrea", "packetcapture", "packets")
 	defaultFS       = afero.NewOsFs()
 )
-
-func getPacketDirectory() string {
-	return filepath.Join(os.TempDir(), "antrea", "packetcapture", "packets")
-}
 
 type packetCaptureState struct {
 	// name is the PacketCapture name.
 	name string
-	// numCapturedPackets record how many packets have been captured. Due to the RateLimiter,
-	// this maybe not be realtime data.
-	numCapturedPackets int32
-	// maxNumCapturedPackets is target number limit for our capture. When numCapturedPackets == maxNumCapturedPackets, it means that 
+	// capturedPacketsNum records how many packets have been captured. Due to the RateLimiter,
+	// this may not be the real-time data.
+	capturedPacketsNum int32
+	// targetCapturedPacketsNum is the target number limit for a PacketCapture. When numCapturedPackets == targetCapturedPacketsNum, it means
 	// the PacketCapture is done successfully.
-	maxNumCapturedPackets int32
+	targetCapturedPacketsNum int32
 	// updateRateLimiter controls the frequency of the updates to PacketCapture status.
 	updateRateLimiter *rate.Limiter
 	// pcapngFile is the file object for the packet file.
@@ -118,15 +125,15 @@ type Controller struct {
 	packetCaptureLister   crdlisters.PacketCaptureLister
 	packetCaptureSynced   cache.InformerSynced
 	interfaceStore        interfacestore.InterfaceStore
-	nodeConfig            *config.NodeConfig
 	queue                 workqueue.TypedRateLimitingInterface[string]
 	sftpUploader          ftp.Uploader
 	newPacketSourceFn     func(c *Controller, pc *crdv1alpha1.PacketCapture) (PacketSource, error)
 	cond                  *sync.Cond
-	captures              map[string]string
-	numCaptures           int
-	waitingCaptures       int
-	waitingCapturesCh     chan string
+	// A name-phase mapping for all PacketCapture CRs.
+	captures           map[string]packetCapturePhase
+	numRunningCaptures int
+	waitingCaptures    int
+	waitingCapturesCh  chan string
 }
 
 func NewPacketCaptureController(
@@ -134,7 +141,6 @@ func NewPacketCaptureController(
 	crdClient clientsetversioned.Interface,
 	packetCaptureInformer crdinformers.PacketCaptureInformer,
 	interfaceStore interfacestore.InterfaceStore,
-	nodeConfig *config.NodeConfig,
 ) *Controller {
 	c := &Controller{
 		kubeClient:            kubeClient,
@@ -143,14 +149,13 @@ func NewPacketCaptureController(
 		packetCaptureLister:   packetCaptureInformer.Lister(),
 		packetCaptureSynced:   packetCaptureInformer.Informer().HasSynced,
 		interfaceStore:        interfaceStore,
-		nodeConfig:            nodeConfig,
 		queue: workqueue.NewTypedRateLimitingQueueWithConfig(
 			workqueue.NewTypedItemExponentialFailureRateLimiter[string](minRetryDelay, maxRetryDelay),
 			workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 		),
 		sftpUploader:      &ftp.SftpUploader{},
 		cond:              sync.NewCond(&sync.Mutex{}),
-		captures:          make(map[string]string),
+		captures:          make(map[string]packetCapturePhase),
 		waitingCapturesCh: make(chan string, maxWaitingCaptures),
 	}
 
@@ -165,14 +170,12 @@ func NewPacketCaptureController(
 		if err != nil {
 			return nil, err
 		}
-
 		device := c.getTargetCaptureDevice(pc)
 		if device == nil {
 			return nil, nil
 		}
 		filter := bpf.CompilePacketFilter(pc.Spec.Packet, matchPacket)
-		klog.V(5).InfoS("PacketCapture trying to match packet", "name", pc.Name, "packet", *matchPacket)
-		klog.V(5).InfoS("Generated bpf instructions for Packetcapture", "name", pc.Name, "bpf instructions", filter)
+		klog.V(5).InfoS("Generated bpf instructions for Packetcapture", "name", pc.Name, "match packet", matchPacket, "bpf instructions", filter)
 		return NewPcapSource(*device, filter)
 	}
 
@@ -231,6 +234,7 @@ func nameToPath(name string) string {
 }
 
 func (c *Controller) worker() {
+	// check the captures that are waiting in line.
 	go c.processWaitingCaptures()
 	for c.processPacketCaptureItem() {
 	}
@@ -241,14 +245,14 @@ func (c *Controller) processWaitingCaptures() {
 		capture := func() string {
 			c.cond.L.Lock()
 			defer c.cond.L.Unlock()
-			for c.numCaptures >= defaultWorkers || c.waitingCaptures == 0 {
+			for c.numRunningCaptures >= maxConcurrentCaptures || c.waitingCaptures == 0 {
 				c.cond.Wait()
 			}
-			c.numCaptures += 1
+			c.numRunningCaptures += 1
 			c.waitingCaptures -= 1
 			capture := <-c.waitingCapturesCh
 			c.startPacketCapture(capture)
-			c.captures[capture] = "RUNNING"
+			c.captures[capture] = packetCapturePhaseRunning
 			return capture
 		}()
 		c.queue.Add(capture)
@@ -264,9 +268,68 @@ func (c *Controller) processPacketCaptureItem() bool {
 	if err := c.syncPacketCapture(key); err == nil {
 		c.queue.Forget(key)
 	} else {
-		klog.ErrorS(err, "Error syncing PacketCapture, exiting", "key", key)
+		if !apierrors.IsNotFound(err) {
+			c.queue.AddRateLimited(key)
+			klog.ErrorS(err, "Error syncing PacketCapture, requeueing", "key", key)
+		} else {
+			c.queue.Forget(key)
+			delete(c.captures, key)
+			c.cleanupPacketCapture(key)
+		}
 	}
 	return true
+}
+
+func (c *Controller) syncPacketCapture(pcName string) error {
+	pc, err := c.packetCaptureLister.Get(pcName)
+	if err != nil {
+		return err
+	}
+	// capture will not happen on this node.
+	device := c.getTargetCaptureDevice(pc)
+	if device == nil {
+		return nil
+	}
+
+	status, err := func() (packetCapturePhase, error) {
+		c.cond.L.Lock()
+		defer c.cond.L.Unlock()
+		status := c.captures[pcName]
+		klog.InfoS("Syncing PacketCapture", "packagecapture", pcName, "status", status)
+		if status == packetCapturePhaseUnknown {
+			klog.InfoS("New PackageCapture", "name", pcName)
+			newStatus, err := func() (packetCapturePhase, error) {
+				if c.numRunningCaptures < maxConcurrentCaptures && c.waitingCaptures == 0 {
+					c.numRunningCaptures += 1
+					// run capture asynchronously
+					err = c.startPacketCapture(pcName)
+					return packetCapturePhaseRunning, err
+				}
+				// non blocking channel write
+				select {
+				case c.waitingCapturesCh <- pcName:
+					c.waitingCaptures += 1
+					return packetCapturePhasePending, nil
+				default:
+					// should never happen with realistic usage, will be requeued
+					return packetCapturePhaseUnknown, fmt.Errorf("too many captures in waiting channel")
+				}
+			}()
+			if err != nil {
+				return "", err
+			}
+			c.captures[pcName] = newStatus
+			return newStatus, nil
+		}
+		return status, nil
+	}()
+	if err != nil {
+		return err
+	}
+	if err := c.patchStatusIfNeeded(pcName, status); err != nil {
+		return fmt.Errorf("error when patching status: %w", err)
+	}
+	return nil
 }
 
 func (c *Controller) cleanupPacketCapture(pcName string) {
@@ -279,9 +342,9 @@ func (c *Controller) cleanupPacketCapture(pcName string) {
 		return
 	}
 	if err := defaultFS.Remove(path); err == nil {
-		klog.V(2).InfoS("Deleted pcap file", "name", pcName, "path", path)
+		klog.V(2).InfoS("Deleted the captured pcap file successfully", "name", pcName, "path", path)
 	} else {
-		klog.ErrorS(err, "Failed to delete pcap file", "name", pcName, "path", path)
+		klog.ErrorS(err, "Failed to delete the captured pcap file", "name", pcName, "path", path)
 	}
 }
 
@@ -289,7 +352,7 @@ func getPacketFileAndWriter(name string) (afero.File, *pcapgo.NgWriter, error) {
 	filePath := nameToPath(name)
 	var file afero.File
 	if _, err := os.Stat(filePath); err == nil {
-		return nil, nil, fmt.Errorf("packet file already exists. this may be due to an unexpected termination")
+		return nil, nil, fmt.Errorf("the packet file %s already exists. This may be caused by an unexpected termination", filePath)
 	} else if os.IsNotExist(err) {
 		file, err = defaultFS.Create(filePath)
 		if err != nil {
@@ -300,13 +363,14 @@ func getPacketFileAndWriter(name string) (afero.File, *pcapgo.NgWriter, error) {
 	}
 	writer, err := pcapgo.NewNgWriter(file, layers.LinkTypeEthernet)
 	if err != nil {
-		return nil, nil, fmt.Errorf("couldn't initialize pcap writer: %w", err)
+		return nil, nil, fmt.Errorf("couldn't initialize a pcap writer: %w", err)
 	}
 	return file, writer, nil
 }
 
 // getTargetCaptureDevice is trying to locate the target device for packet capture. If the target Pod does not exist on the current Node,
-//  the agent on this Node will not perform the capture.
+// the agent on this Node will not perform the capture. In the PacketCapture spec, at least one of `.Spec.Source.Pod` or `.Spec.Destination.Pod`
+// should be set.
 func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) *string {
 	var pod, ns string
 	if pc.Spec.Source.Pod != nil {
@@ -325,76 +389,70 @@ func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) *stri
 	return &podInterfaces[0].InterfaceName
 }
 
-func (c *Controller) startPacketCapture(name string) {
+func (c *Controller) startPacketCapture(name string) error {
 	klog.V(4).InfoS("Started processing PacketCapture", "name", name)
-
-	go func() error {
-		var err error
-		pcState := &packetCaptureState{name: name}
-		defer func() {
+	var err error
+	pcState := &packetCaptureState{name: name}
+	cleanup := func() {
+		if err != nil {
+			klog.ErrorS(err, "PackageCapture failed", "name", name)
+			err := c.updatePacketCaptureStatus(name, pcState.capturedPacketsNum, "", err)
 			if err != nil {
-				c.cleanupPacketCapture(name)
-				klog.ErrorS(err, "PackageCapture failed", "name", name)
-				err := c.updatePacketCaptureStatus(name, pcState.numCapturedPackets, "", err)
-				if err != nil {
-					klog.ErrorS(err, "failed to update PacketCapture status")
-				}
+				klog.ErrorS(err, "Failed to update PacketCapture status")
 			}
-		}()
-		pc, err := c.packetCaptureLister.Get(name)
-		if err != nil {
-			return err
 		}
-
-		device := c.getTargetCaptureDevice(pc)
-		if device == nil {
-			return nil
-		}
-
-		klog.V(2).InfoS("Prepare capture on current node", "name", pc.Name, "device", *device)
-		packetSource, err := c.newPacketSourceFn(c, pc)
-		if err != nil {
-			klog.ErrorS(err, "failed to create packet source")
-			return err
-
-		}
-
-		pcState.maxNumCapturedPackets = pc.Spec.CaptureConfig.FirstN.Number
-		file, writer, err := getPacketFileAndWriter(pc.Name)
-		if err != nil {
-			return err
-		}
-
-		pcState.pcapngFile = file
-		pcState.pcapngWriter = writer
-		pcState.updateRateLimiter = rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1)
-		timeout := defaultTimeoutDuration
-		if pc.Spec.Timeout != nil {
-			timeout = time.Duration(*pc.Spec.Timeout) * time.Second
-		}
-
+	}
+	defer cleanup()
+	pc, err := c.packetCaptureLister.Get(name)
+	if err != nil {
+		return err
+	}
+	device := c.getTargetCaptureDevice(pc)
+	klog.V(2).InfoS("Prepare capture on current node", "name", pc.Name, "device", *device)
+	packetSource, err := c.newPacketSourceFn(c, pc)
+	if err != nil {
+		klog.ErrorS(err, "Failed to create packet source")
+		return err
+	}
+	pcState.targetCapturedPacketsNum = pc.Spec.CaptureConfig.FirstN.Number
+	file, writer, err := getPacketFileAndWriter(pc.Name)
+	if err != nil {
+		return err
+	}
+	pcState.pcapngFile = file
+	pcState.pcapngWriter = writer
+	pcState.updateRateLimiter = rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1)
+	timeout := defaultTimeoutDuration
+	if pc.Spec.Timeout != nil {
+		timeout = time.Duration(*pc.Spec.Timeout) * time.Second
+	}
+	go func() error {
 		err = c.performCapture(pcState, timeout, packetSource)
 		func() {
 			c.cond.L.Lock()
 			defer c.cond.L.Unlock()
-			c.captures[name] = "COMPLETED"
-			c.numCaptures -= 1
+			c.captures[name] = packetCapturePhaseCompleted
+			c.numRunningCaptures -= 1
 			c.cond.Signal()
 		}()
 
+		updateErr := c.updatePacketCaptureStatus(name, pcState.capturedPacketsNum, "", err)
+		if updateErr != nil {
+			klog.ErrorS(updateErr, "Failed to update PacketCapture status")
+		}
 		return err
 	}()
-
+	return nil
 }
 
 func (c *Controller) performCapture(captureState *packetCaptureState, timeout time.Duration, source PacketSource) error {
 	options := CaptureOptions{
-		MaxCaptureLength: snapshotLen,
-		Promiscuous:      true,
+		MaxCaptureLength: maxSnapshotBytes,
+		Promiscuous:      false,
 	}
 	packets, err := source.Capture(&options)
 	if err != nil {
-		klog.ErrorS(err, "failed to start capture")
+		klog.ErrorS(err, "Failed to start capture")
 		return err
 	}
 
@@ -404,10 +462,10 @@ func (c *Controller) performCapture(captureState *packetCaptureState, timeout ti
 	for {
 		select {
 		case packet := <-packets:
-			if captureState.numCapturedPackets == captureState.maxNumCapturedPackets {
+			if captureState.capturedPacketsNum == captureState.targetCapturedPacketsNum {
 				return nil
 			}
-			captureState.numCapturedPackets++
+			captureState.capturedPacketsNum++
 			ci := gopacket.CaptureInfo{
 				Timestamp:     time.Now(),
 				CaptureLength: len(packet.Data()),
@@ -415,12 +473,12 @@ func (c *Controller) performCapture(captureState *packetCaptureState, timeout ti
 			}
 			err = captureState.pcapngWriter.WritePacket(ci, packet.Data())
 			if err != nil {
-				return fmt.Errorf("couldn't write packet: %w", err)
+				return fmt.Errorf("couldn't write packets: %w", err)
 			}
-			klog.V(5).InfoS("capture packet", "name", captureState.name, "count",
-				captureState.numCapturedPackets, "len", ci.Length)
+			klog.V(5).InfoS("Capture packets", "name", captureState.name, "count",
+				captureState.capturedPacketsNum, "len", ci.Length)
 
-			reachTarget := captureState.numCapturedPackets == captureState.maxNumCapturedPackets
+			reachTarget := captureState.capturedPacketsNum == captureState.targetCapturedPacketsNum
 			// use rate limiter to reduce the times we need to update status.
 			if reachTarget || captureState.updateRateLimiter.Allow() {
 				pc, err := c.packetCaptureLister.Get(captureState.name)
@@ -430,36 +488,32 @@ func (c *Controller) performCapture(captureState *packetCaptureState, timeout ti
 				// if reach the target. flush the file and upload it.
 				if reachTarget {
 					path := os.Getenv("POD_NAME") + ":" + nameToPath(pc.Name)
-					if err := captureState.pcapngWriter.Flush(); err != nil {
+					if err = captureState.pcapngWriter.Flush(); err != nil {
 						return err
 					}
 					if pc.Spec.FileServer != nil {
-						err := c.uploadPackets(pc, captureState.pcapngFile)
+						err = c.uploadPackets(pc, captureState.pcapngFile)
 						klog.V(4).InfoS("Upload captured packets", "name", pc.Name, "path", path)
-						// update upload result.
-						if updateErr := c.updatePacketCaptureStatus(pc.Name, captureState.numCapturedPackets, path, err); updateErr != nil {
-							return updateErr
-						}
-						if err != nil {
-							return err
-						}
-					} else {
-						// update capture result.
-						if updateErr := c.updatePacketCaptureStatus(pc.Name, captureState.numCapturedPackets, path, nil); updateErr != nil {
-							return updateErr
-						}
-					}
 
-					if err := captureState.pcapngFile.Close(); err != nil {
+					}
+					// update capture result.
+					if updateErr := c.updatePacketCaptureStatus(pc.Name, captureState.capturedPacketsNum, path, err); updateErr != nil {
+						klog.ErrorS(err, "Failed to update PacketCapture status")
+					}
+					if err != nil {
 						return err
 					}
+					if err := captureState.pcapngFile.Close(); err != nil {
+						klog.ErrorS(err, "Close pcapng file error", "name", pc.Name, "path", path)
+					}
 				}
 
-				err = c.updatePacketCaptureStatus(pc.Name, captureState.numCapturedPackets, "", nil)
+				err = c.updatePacketCaptureStatus(pc.Name, captureState.capturedPacketsNum, "", nil)
 				if err != nil {
-					return fmt.Errorf("failed to update the PacketCapture: %w", err)
+					klog.ErrorS(err, "Failed to update PacketCapture status")
+				} else {
+					klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(pc), "capturedPacketsNum", captureState.capturedPacketsNum)
 				}
-				klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(pc), "numCapturedPackets", captureState.numCapturedPackets)
 			}
 		case <-timer.C:
 			pc, err := c.packetCaptureLister.Get(captureState.name)
@@ -468,49 +522,32 @@ func (c *Controller) performCapture(captureState *packetCaptureState, timeout ti
 			}
 			klog.InfoS("PacketCapture timeout", "name", pc.Name)
 			err = errors.New(captureTimeoutReason)
-			if updateErr := c.updatePacketCaptureStatus(pc.Name, 0, "", err); updateErr != nil {
-				klog.ErrorS(updateErr, "failed to update the PacketCapture", "name", pc.Name)
+			if updateErr := c.updatePacketCaptureStatus(pc.Name, captureState.capturedPacketsNum, "", err); updateErr != nil {
+				klog.ErrorS(updateErr, "The PacketCapture timed out, but PacketCapture status update failed", "name", pc.Name)
 			}
 			return err
 		}
 	}
 }
 
-func (c *Controller) getPodIP(podRef *crdv1alpha1.PodReference, isIPv6 bool) (net.IP, error) {
+func (c *Controller) getPodIP(podRef *crdv1alpha1.PodReference) (net.IP, error) {
 	podInterfaces := c.interfaceStore.GetContainerInterfacesByPod(podRef.Name, podRef.Namespace)
 	var result net.IP
 	if len(podInterfaces) > 0 {
-		if isIPv6 {
-			result = podInterfaces[0].GetIPv6Addr()
-		} else {
-			result = podInterfaces[0].GetIPv4Addr()
-		}
+		result = podInterfaces[0].GetIPv4Addr()
 	} else {
 		pod, err := c.kubeClient.CoreV1().Pods(podRef.Namespace).Get(context.TODO(), podRef.Name, metav1.GetOptions{})
 		if err != nil {
-			return nil, fmt.Errorf("failed to get Pod %s/%s: %v", podRef.Namespace, podRef.Name, err)
+			return nil, fmt.Errorf("failed to get Pod %s/%s: %w", podRef.Namespace, podRef.Name, err)
 		}
 		podIPs := make([]net.IP, len(pod.Status.PodIPs))
 		for i, ip := range pod.Status.PodIPs {
 			podIPs[i] = net.ParseIP(ip.IP)
 		}
-		if isIPv6 {
-			ip, err := util.GetIPWithFamily(podIPs, util.FamilyIPv6)
-			if err != nil {
-				return nil, err
-			} else {
-				result = ip
-			}
-		} else {
-			result = util.GetIPv4Addr(podIPs)
-		}
+		result = util.GetIPv4Addr(podIPs)
 	}
 	if result == nil {
-		family := "IPv4"
-		if isIPv6 {
-			family = "IPv6"
-		}
-		return nil, fmt.Errorf("cannot find IP with %s AddressFamily for Pod %s/%s", family, podRef.Namespace, podRef.Name)
+		return nil, fmt.Errorf("cannot find IP with IPV4 AddressFamily for Pod %s/%s", podRef.Namespace, podRef.Name)
 	}
 	return result, nil
 }
@@ -523,32 +560,29 @@ func (c *Controller) createMatchPacket(pc *crdv1alpha1.PacketCapture) (*binding.
 		}
 	}
 
-	packet.IsIPv6 = pc.Spec.Packet.IPFamily == v1.IPv6Protocol
 	if pc.Spec.Source.Pod != nil {
-		ip, err := c.getPodIP(pc.Spec.Source.Pod, packet.IsIPv6)
+		ip, err := c.getPodIP(pc.Spec.Source.Pod)
 		if err != nil {
 			return nil, err
-		} else {
-			packet.SourceIP = ip
 		}
+		packet.SourceIP = ip
 	} else if pc.Spec.Source.IP != nil {
 		packet.SourceIP = net.ParseIP(*pc.Spec.Source.IP)
 		if packet.SourceIP == nil {
-			return nil, errors.New("invalid ip address: " + *pc.Spec.Source.IP)
+			return nil, errors.New("invalid IP address: " + *pc.Spec.Source.IP)
 		}
 	}
 
 	if pc.Spec.Destination.Pod != nil {
-		ip, err := c.getPodIP(pc.Spec.Destination.Pod, packet.IsIPv6)
+		ip, err := c.getPodIP(pc.Spec.Destination.Pod)
 		if err != nil {
 			return nil, err
-		} else {
-			packet.DestinationIP = ip
 		}
+		packet.DestinationIP = ip
 	} else if pc.Spec.Destination.IP != nil {
 		packet.DestinationIP = net.ParseIP(*pc.Spec.Destination.IP)
 		if packet.DestinationIP == nil {
-			return nil, errors.New("invalid ip address: " + *pc.Spec.Destination.IP)
+			return nil, errors.New("invalid IP address: " + *pc.Spec.Destination.IP)
 		}
 	}
 
@@ -570,59 +604,17 @@ func (c *Controller) createMatchPacket(pc *crdv1alpha1.PacketCapture) (*binding.
 	return packet, nil
 }
 
-func (c *Controller) syncPacketCapture(pcName string) error {
-	status, err := func() (string, error) {
-		c.cond.L.Lock()
-		defer c.cond.L.Unlock()
-		status := c.captures[pcName]
-		klog.InfoS("Syncing PackageCapture", "capture", pcName, "status", status)
-		if status == "" {
-			klog.InfoS("New PackageCapture", "capture", pcName)
-			newStatus, err := func() (string, error) {
-				if c.numCaptures < defaultWorkers && c.waitingCaptures == 0 {
-					c.numCaptures += 1
-					// run capture asynchronously
-					c.startPacketCapture(pcName)
-					return "RUNNING", nil
-				}
-				// non blocking channel write
-				select {
-				case c.waitingCapturesCh <- pcName:
-					c.waitingCaptures += 1
-					return "WAITING", nil
-				default:
-					// should never happen with realistic usage, will be requeued
-					return "", fmt.Errorf("too many captures in waiting channel")
-				}
-			}()
-			if err != nil {
-				return "", err
-			}
-			c.captures[pcName] = newStatus
-			return newStatus, nil
-		}
-		return status, nil
-	}()
-	if err != nil {
-		return err
-	}
-	if err := c.patchStatusIfNeeded(pcName, status); err != nil {
-		return fmt.Errorf("error when patching status: %w", err)
-	}
-	return nil
-}
-
-func (c *Controller) patchStatusIfNeeded(name string, status string) error {
+func (c *Controller) patchStatusIfNeeded(name string, status packetCapturePhase) error {
 	klog.InfoS("Patching PacketCapture CR Status if needed", "name", name, "status", status)
 	conditions := []crdv1alpha1.PacketCaptureCondition{}
 
-	if status == "RUNNING" {
+	if status == packetCapturePhaseRunning {
 		conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
 			Type:               crdv1alpha1.PacketCaptureRunning,
 			Status:             metav1.ConditionStatus(v1.ConditionTrue),
 			LastTransitionTime: metav1.Now(),
 		})
-	} else if status == "WAITING" || status == "" {
+	} else if status == packetCapturePhasePending || status == packetCapturePhaseUnknown {
 		conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
 			Type:               crdv1alpha1.PacketCapturePending,
 			Status:             metav1.ConditionStatus(v1.ConditionTrue),
@@ -658,7 +650,7 @@ func (c *Controller) patchStatusIfNeeded(name string, status string) error {
 	return nil
 }
 
-func (c *Controller) getUploaderByProtocol(protocol StorageProtocolType) (ftp.Uploader, error) {
+func (c *Controller) getUploaderByProtocol(protocol storageProtocolType) (ftp.Uploader, error) {
 	if protocol == sftpProtocol {
 		return c.sftpUploader, nil
 	}
@@ -669,60 +661,23 @@ func (c *Controller) generatePacketsPathForServer(name string) string {
 	return name + ".pcapng"
 }
 
-func getDefaultFileServerAuth() *crdv1alpha1.BundleServerAuthConfiguration {
-	return &crdv1alpha1.BundleServerAuthConfiguration{
-		AuthType: crdv1alpha1.BasicAuthentication,
-		AuthSecret: &v1.SecretReference{
-			Name:      fileServerAuthSecretName,
-			Namespace: fileServerAuthSecretNamespace,
-		},
-	}
-}
-
 func (c *Controller) uploadPackets(pc *crdv1alpha1.PacketCapture, outputFile afero.File) error {
 	klog.V(2).InfoS("Uploading captured packets for PacketCapture", "name", pc.Name)
 	uploader, err := c.getUploaderByProtocol(sftpProtocol)
 	if err != nil {
-		return fmt.Errorf("failed to upload packets while getting uploader: %v", err)
+		return fmt.Errorf("failed to upload packets while getting uploader: %w", err)
 	}
-	authConfig := getDefaultFileServerAuth()
-	serverAuth, err := ftp.ParseBundleAuth(*authConfig, c.kubeClient)
+	authSecret := v1.SecretReference{
+		Name:      fileServerAuthSecretName,
+		Namespace: env.GetAntreaNamespace(),
+	}
+	serverAuth, err := ftp.ParseFileServerAuth(ftp.BasicAuthentication, &authSecret, c.kubeClient)
 	if err != nil {
-		klog.ErrorS(err, "Failed to get authentication for the fileServer", "name", pc.Name, "authentication", authConfig)
+		klog.ErrorS(err, "Failed to get authentication for the fileServer", "name", pc.Name, "authSecret", authSecret)
 		return err
 	}
 	cfg := ftp.GenSSHClientConfig(serverAuth.BasicAuthentication.Username, serverAuth.BasicAuthentication.Password)
 	return uploader.Upload(pc.Spec.FileServer.URL, c.generatePacketsPathForServer(pc.Name), cfg, outputFile)
-}
-
-func isPacketCaptureFailed(pc *crdv1alpha1.PacketCapture) bool {
-	conditions := pc.Status.Conditions
-	if len(conditions) == 0 {
-		return false
-	}
-	for _, item := range conditions {
-		if item.Status == metav1.ConditionFalse {
-			return true
-		}
-	}
-	return false
-}
-
-func isPacketCaptureTimeout(pc *crdv1alpha1.PacketCapture) bool {
-	var timeout time.Duration
-	if pc.Spec.Timeout != nil {
-		timeout = time.Duration(*pc.Spec.Timeout) * time.Second
-	} else {
-		timeout = defaultTimeoutDuration
-	}
-	var startTime time.Time
-	if pc.Status.StartTime != nil {
-		startTime = pc.Status.StartTime.Time
-	} else {
-		klog.V(2).InfoS("StartTime field in PacketCapture Status should not be empty", "PacketCapture", klog.KObj(pc))
-		startTime = pc.CreationTimestamp.Time
-	}
-	return startTime.Add(timeout).Before(time.Now())
 }
 
 func isCaptureCompleted(pc *crdv1alpha1.PacketCapture, num int32) bool {
@@ -742,9 +697,8 @@ func (c *Controller) updatePacketCaptureStatus(name string, num int32, path stri
 
 	t := metav1.Now()
 	updatedStatus := crdv1alpha1.PacketCaptureStatus{
-		NumCapturedPackets: num,
-		PacketsFilePath:    path,
-		StartTime:          &t,
+		NumberCaptured: num,
+		FilePath:       path,
 	}
 
 	if err != nil {
@@ -815,14 +769,11 @@ func (c *Controller) updatePacketCaptureStatus(name string, num int32, path stri
 	}
 
 	if retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if toUpdate.Status.StartTime != nil {
-			updatedStatus.StartTime = toUpdate.Status.StartTime
+		if toUpdate.Status.FilePath != "" {
+			updatedStatus.FilePath = toUpdate.Status.FilePath
 		}
-		if toUpdate.Status.PacketsFilePath != "" {
-			updatedStatus.PacketsFilePath = toUpdate.Status.PacketsFilePath
-		}
-		if updatedStatus.NumCapturedPackets == 0 && toUpdate.Status.NumCapturedPackets > 0 {
-			updatedStatus.NumCapturedPackets = toUpdate.Status.NumCapturedPackets
+		if updatedStatus.NumberCaptured == 0 && toUpdate.Status.NumberCaptured > 0 {
+			updatedStatus.NumberCaptured = toUpdate.Status.NumberCaptured
 		}
 
 		updatedStatus.Conditions = mergeConditions(toUpdate.Status.Conditions, updatedStatus.Conditions)
