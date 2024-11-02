@@ -194,6 +194,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		return
 	}
 
+	// check the captures that are waiting in line.
+	go c.processWaitingCaptures()
 	for i := 0; i < defaultWorkers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -223,8 +225,6 @@ func nameToPath(name string) string {
 }
 
 func (c *Controller) worker() {
-	// check the captures that are waiting in line.
-	go c.processWaitingCaptures()
 	for c.processPacketCaptureItem() {
 	}
 }
@@ -262,8 +262,6 @@ func (c *Controller) processPacketCaptureItem() bool {
 			klog.ErrorS(err, "Error syncing PacketCapture, requeueing", "key", key)
 		} else {
 			c.queue.Forget(key)
-			delete(c.captures, key)
-			c.cleanupPacketCapture(key)
 		}
 	}
 	return true
@@ -272,8 +270,13 @@ func (c *Controller) processPacketCaptureItem() bool {
 func (c *Controller) syncPacketCapture(pcName string) error {
 	pc, err := c.packetCaptureLister.Get(pcName)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			delete(c.captures, pcName)
+			c.cleanupPacketCapture(pcName)
+		}
 		return err
 	}
+
 	// capture will not happen on this node.
 	device := c.getTargetCaptureDevice(pc)
 	if device == nil {
