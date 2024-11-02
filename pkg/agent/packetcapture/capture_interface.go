@@ -15,14 +15,14 @@
 package packetcapture
 
 import (
+	"context"
+	"net"
+
 	"github.com/gopacket/gopacket"
+
+	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
-type PacketSource interface {
-	Capture(options *CaptureOptions) (chan gopacket.Packet, error)
-}
-
-type CaptureOptions struct {
-	MaxCaptureLength int
-	Promiscuous      bool
+type PacketCapturer interface {
+	Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error)
 }

@@ -16,19 +16,19 @@ package bpf
 
 import (
 	"encoding/binary"
+	"net"
 	"strings"
 
 	"golang.org/x/net/bpf"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
-	binding "antrea.io/antrea/pkg/ovs/openflow"
 )
 
 // CompilePacketFilter compile the CRD spec to bpf instructions. For now, we only focus on
 // ipv4 traffic. Compare to the raw BPF filter supported by libpcap, we only need to support
 // limited user cases, so an expression parser is not needed.
-func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, matchPacket *binding.Packet) []bpf.Instruction {
+func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, srcIP, dstIP net.IP) []bpf.Instruction {
 	size := uint8(calInstructionsSize(packetSpec))
 
 	// ipv4 check
@@ -56,24 +56,38 @@ func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, matchPacket *binding.Pa
 	}
 
 	// source ip
-	addr := matchPacket.SourceIP
-	if addr != nil {
+	if srcIP != nil {
 		inst = append(inst, loadIPv4SourceAddress)
-		addrVal := binary.BigEndian.Uint32(addr[len(addr)-4:])
+		addrVal := binary.BigEndian.Uint32(srcIP[len(srcIP)-4:])
 		// from here we need to check the inst length to calculate skipFalse. If no protocol is set, there will be no related bpf instructions.
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: addrVal, SkipTrue: 0, SkipFalse: size - uint8(len(inst)) - 2})
 
 	}
 	// dst ip
-	addr = matchPacket.DestinationIP
-	if addr != nil {
+	if dstIP != nil {
 		inst = append(inst, loadIPv4DestinationAddress)
-		addrVal := binary.BigEndian.Uint32(addr[len(addr)-4:])
+		addrVal := binary.BigEndian.Uint32(dstIP[len(dstIP)-4:])
 		inst = append(inst, bpf.JumpIf{Cond: bpf.JumpEqual, Val: addrVal, SkipTrue: 0, SkipFalse: size - uint8(len(inst)) - 2})
 	}
 
-	srcPort := matchPacket.SourcePort
-	dstPort := matchPacket.DestinationPort
+	// ports
+	var srcPort, dstPort uint16
+	if packetSpec.TransportHeader.TCP != nil {
+		if packetSpec.TransportHeader.TCP.SrcPort != nil {
+			srcPort = uint16(*packetSpec.TransportHeader.TCP.SrcPort)
+		}
+		if packetSpec.TransportHeader.TCP.DstPort != nil {
+			dstPort = uint16(*packetSpec.TransportHeader.TCP.DstPort)
+		}
+	} else if packetSpec.TransportHeader.UDP != nil {
+		if packetSpec.TransportHeader.UDP.SrcPort != nil {
+			srcPort = uint16(*packetSpec.TransportHeader.UDP.SrcPort)
+		}
+		if packetSpec.TransportHeader.UDP.DstPort != nil {
+			dstPort = uint16(*packetSpec.TransportHeader.UDP.DstPort)
+		}
+	}
+
 	if srcPort > 0 || dstPort > 0 {
 		skipTrue := size - uint8(len(inst)) - 3
 		inst = append(inst, loadIPv4HeaderOffset(skipTrue)...)

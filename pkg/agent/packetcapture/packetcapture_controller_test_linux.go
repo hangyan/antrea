@@ -39,14 +39,13 @@ import (
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	fakeversioned "antrea.io/antrea/pkg/client/clientset/versioned/fake"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions"
-	binding "antrea.io/antrea/pkg/ovs/openflow"
 	"antrea.io/antrea/pkg/util/k8s"
 )
 
 var (
-	pod1IPv4     = "192.168.10.10"
-	pod2IPv4     = "192.168.11.10"
-	ipv4         = "192.168.12.4"
+	pod1IPv4 = "192.168.10.10"
+	pod2IPv4 = "192.168.11.10"
+
 	ipv6         = "2001:db8::68"
 	service1IPv4 = "10.96.0.10"
 	pod1MAC, _   = net.ParseMAC("aa:bb:cc:dd:ee:0f")
@@ -54,11 +53,7 @@ var (
 	ofPortPod1   = uint32(1)
 	ofPortPod2   = uint32(2)
 
-	icmp6Proto = intstr.FromInt32(58)
-	icmpProto  = intstr.FromString("ICMP")
-
-	port80 int32 = 80
-	port81 int32 = 81
+	icmpProto = intstr.FromString("ICMP")
 
 	pod1 = v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -247,204 +242,6 @@ func TestErrPacketCaptureCRD(t *testing.T) {
 
 	err := pcc.updatePacketCaptureStatus(pc.Name, 0, "", errors.New(reason))
 	require.NoError(t, err)
-}
-
-func TestCreateMatchPacket(t *testing.T) {
-	pcs := []struct {
-		name           string
-		pc             *crdv1alpha1.PacketCapture
-		intf           *interfacestore.InterfaceConfig
-		receiverOnly   bool
-		expectedPacket *binding.Packet
-		expectedErr    string
-	}{
-		{
-			name: "ipv4 tcp packet",
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc3", UID: "uid3"},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					Source: crdv1alpha1.Source{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod1.Namespace,
-							Name:      pod1.Name,
-						},
-					},
-					Destination: crdv1alpha1.Destination{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod2.Namespace,
-							Name:      pod2.Name,
-						},
-					},
-					Packet: &crdv1alpha1.Packet{
-						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "TCP"},
-						TransportHeader: crdv1alpha1.TransportHeader{
-							TCP: &crdv1alpha1.TCPHeader{
-								SrcPort: &port80,
-								DstPort: &port81,
-							},
-						},
-					},
-				},
-			},
-			expectedPacket: &binding.Packet{
-				SourceIP:        net.ParseIP(pod1IPv4),
-				DestinationIP:   net.ParseIP(pod2IPv4),
-				SourcePort:      80,
-				DestinationPort: 81,
-			},
-		},
-		{
-			name: "receiver only with source ip",
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc4", UID: "uid4"},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					Source: crdv1alpha1.Source{
-						IP: &ipv4,
-					},
-					Destination: crdv1alpha1.Destination{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod1.Namespace,
-							Name:      pod1.Name,
-						},
-					},
-					Packet: &crdv1alpha1.Packet{
-						IPFamily: v1.IPv4Protocol,
-						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "ICMP"},
-					},
-				},
-			},
-			receiverOnly: true,
-			expectedPacket: &binding.Packet{
-				SourceIP:      net.ParseIP("192.168.12.4"),
-				DestinationIP: net.ParseIP(pod1IPv4),
-			},
-		},
-		{
-			name: "destination Pod without IPv6 address",
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc4", UID: "uid4"},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					Source: crdv1alpha1.Source{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod1.Namespace,
-							Name:      pod1.Name,
-						},
-					},
-					Destination: crdv1alpha1.Destination{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod2.Namespace,
-							Name:      pod2.Name,
-						},
-					},
-					Packet: &crdv1alpha1.Packet{
-						IPFamily: v1.IPv6Protocol,
-						Protocol: &icmp6Proto,
-					},
-				},
-			},
-			expectedErr: "cannot find IP with IPv6 AddressFamily for Pod default/pod-2",
-		},
-		{
-			name: "pod to ipv6 packet capture",
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc5", UID: "uid5"},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					Source: crdv1alpha1.Source{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod1.Namespace,
-							Name:      pod1.Name,
-						},
-					},
-					Destination: crdv1alpha1.Destination{
-						IP: &ipv6,
-					},
-					Packet: &crdv1alpha1.Packet{
-						IPFamily: v1.IPv6Protocol,
-						Protocol: &icmp6Proto,
-					},
-				},
-			},
-			expectedPacket: &binding.Packet{
-				IsIPv6:        true,
-				SourceIP:      net.ParseIP(ipv6),
-				DestinationIP: net.ParseIP("2001:db8::68"),
-			},
-		},
-		{
-			name: "udp packet",
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc7", UID: "uid7"},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					Source: crdv1alpha1.Source{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod1.Namespace,
-							Name:      pod1.Name,
-						},
-					},
-					Destination: crdv1alpha1.Destination{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod2.Namespace,
-							Name:      pod2.Name,
-						},
-					},
-					Packet: &crdv1alpha1.Packet{
-						Protocol: &intstr.IntOrString{Type: intstr.String, StrVal: "UDP"},
-						TransportHeader: crdv1alpha1.TransportHeader{
-							UDP: &crdv1alpha1.UDPHeader{
-								SrcPort: &port80,
-								DstPort: &port81,
-							},
-						},
-					},
-				},
-			},
-			expectedPacket: &binding.Packet{
-				SourceIP:        net.ParseIP(pod1IPv4),
-				DestinationIP:   net.ParseIP(pod2IPv4),
-				SourcePort:      80,
-				DestinationPort: 81,
-			},
-		},
-		{
-			name: "destination Pod unavailable",
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc11", UID: "uid11"},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					Destination: crdv1alpha1.Destination{
-						Pod: &crdv1alpha1.PodReference{
-							Name:      "unknown pod",
-							Namespace: "default",
-						},
-					},
-				},
-			},
-			expectedErr: "failed to get Pod default/unknown pod: pods \"unknown pod\" not found",
-		},
-	}
-	for _, pc := range pcs {
-		t.Run(pc.name, func(t *testing.T) {
-			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
-			podInterfaces := pcc.interfaceStore.GetContainerInterfacesByPod(pod1.Name, pod1.Namespace)
-			if pc.intf != nil {
-				podInterfaces[0] = pc.intf
-			}
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-			pcc.crdInformerFactory.Start(stopCh)
-			pcc.crdInformerFactory.WaitForCacheSync(stopCh)
-			pcc.informerFactory.Start(stopCh)
-			pcc.informerFactory.WaitForCacheSync(stopCh)
-
-			pkt, err := pcc.createMatchPacket(pc.pc)
-			if pc.expectedErr == "" {
-				require.NoError(t, err)
-				assert.Equal(t, pc.expectedPacket, pkt)
-			} else {
-				assert.ErrorContains(t, err, pc.expectedErr)
-				assert.Nil(t, pkt)
-			}
-		})
-	}
 }
 
 // TestPacketCaptureControllerRun was used to validate the whole run process is working. It doesn't wait for

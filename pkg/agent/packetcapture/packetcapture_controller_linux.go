@@ -42,13 +42,11 @@ import (
 	klog "k8s.io/klog/v2"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
-	"antrea.io/antrea/pkg/agent/packetcapture/bpf"
 	"antrea.io/antrea/pkg/agent/util"
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	clientsetversioned "antrea.io/antrea/pkg/client/clientset/versioned"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
 	crdlisters "antrea.io/antrea/pkg/client/listers/crd/v1alpha1"
-	binding "antrea.io/antrea/pkg/ovs/openflow"
 	"antrea.io/antrea/pkg/util/env"
 	"antrea.io/antrea/pkg/util/ftp"
 )
@@ -82,9 +80,6 @@ const (
 	// PacketCapture uses a dedicated Secret object to store authentication information for a file server.
 	// #nosec G101
 	fileServerAuthSecretName = "antrea-packetcapture-fileserver-auth"
-
-	// Max packet size for pcap capture.
-	maxSnapshotBytes = 65536
 )
 
 type packetCapturePhase string
@@ -127,7 +122,7 @@ type Controller struct {
 	interfaceStore        interfacestore.InterfaceStore
 	queue                 workqueue.TypedRateLimitingInterface[string]
 	sftpUploader          ftp.Uploader
-	newPacketSourceFn     func(c *Controller, pc *crdv1alpha1.PacketCapture) (PacketSource, error)
+	newPacketCapturerFn   func(pc *crdv1alpha1.PacketCapture) (PacketCapturer, error)
 	cond                  *sync.Cond
 	// A name-phase mapping for all PacketCapture CRs.
 	captures           map[string]packetCapturePhase
@@ -165,18 +160,12 @@ func NewPacketCaptureController(
 		DeleteFunc: c.deletePacketCapture,
 	}, resyncPeriod)
 
-	c.newPacketSourceFn = func(c *Controller, pc *crdv1alpha1.PacketCapture) (PacketSource, error) {
-		matchPacket, err := c.createMatchPacket(pc)
-		if err != nil {
-			return nil, err
-		}
+	c.newPacketCapturerFn = func(pc *crdv1alpha1.PacketCapture) (PacketCapturer, error) {
 		device := c.getTargetCaptureDevice(pc)
 		if device == nil {
 			return nil, nil
 		}
-		filter := bpf.CompilePacketFilter(pc.Spec.Packet, matchPacket)
-		klog.V(5).InfoS("Generated bpf instructions for Packetcapture", "name", pc.Name, "match packet", matchPacket, "bpf instructions", filter)
-		return NewPcapSource(*device, filter)
+		return NewPcapCapture(*device)
 	}
 
 	return c
@@ -407,9 +396,14 @@ func (c *Controller) startPacketCapture(name string) error {
 	if err != nil {
 		return err
 	}
+	srcIP, dstIp, err := c.parseIPs(pc)
+	if err != nil {
+		return err
+	}
+	// checked before, ensured it's not nil here.
 	device := c.getTargetCaptureDevice(pc)
 	klog.V(2).InfoS("Prepare capture on current node", "name", pc.Name, "device", *device)
-	packetSource, err := c.newPacketSourceFn(c, pc)
+	packetCapturer, err := c.newPacketCapturerFn(pc)
 	if err != nil {
 		klog.ErrorS(err, "Failed to create packet source")
 		return err
@@ -427,7 +421,7 @@ func (c *Controller) startPacketCapture(name string) error {
 		timeout = time.Duration(*pc.Spec.Timeout) * time.Second
 	}
 	go func() error {
-		err = c.performCapture(pcState, timeout, packetSource)
+		err = c.performCapture(pc, pcState, *device, srcIP, dstIp, timeout, packetCapturer)
 		func() {
 			c.cond.L.Lock()
 			defer c.cond.L.Unlock()
@@ -445,19 +439,20 @@ func (c *Controller) startPacketCapture(name string) error {
 	return nil
 }
 
-func (c *Controller) performCapture(captureState *packetCaptureState, timeout time.Duration, source PacketSource) error {
-	options := CaptureOptions{
-		MaxCaptureLength: maxSnapshotBytes,
-		Promiscuous:      false,
-	}
-	packets, err := source.Capture(&options)
+func (c *Controller) performCapture(
+	pc *crdv1alpha1.PacketCapture,
+	captureState *packetCaptureState,
+	device string,
+	srcIP, dstIP net.IP,
+	timeout time.Duration,
+	capturer PacketCapturer) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	packets, err := capturer.Capture(ctx, device, srcIP, dstIP, pc.Spec.Packet)
 	if err != nil {
 		klog.ErrorS(err, "Failed to start capture")
 		return err
 	}
-
-	timer := time.NewTicker(timeout)
-	defer timer.Stop()
 
 	for {
 		select {
@@ -515,7 +510,7 @@ func (c *Controller) performCapture(captureState *packetCaptureState, timeout ti
 					klog.InfoS("Updated PacketCapture", "PacketCapture", klog.KObj(pc), "capturedPacketsNum", captureState.capturedPacketsNum)
 				}
 			}
-		case <-timer.C:
+		case <-ctx.Done():
 			pc, err := c.packetCaptureLister.Get(captureState.name)
 			if err != nil {
 				return fmt.Errorf("get PacketCapture failed: %w", err)
@@ -552,56 +547,25 @@ func (c *Controller) getPodIP(podRef *crdv1alpha1.PodReference) (net.IP, error) 
 	return result, nil
 }
 
-func (c *Controller) createMatchPacket(pc *crdv1alpha1.PacketCapture) (*binding.Packet, error) {
-	packet := new(binding.Packet)
-	if pc.Spec.Packet == nil {
-		pc.Spec.Packet = &crdv1alpha1.Packet{
-			IPFamily: v1.IPv4Protocol,
-		}
-	}
-
+func (c *Controller) parseIPs(pc *crdv1alpha1.PacketCapture) (srcIP, dstIP net.IP, err error) {
 	if pc.Spec.Source.Pod != nil {
-		ip, err := c.getPodIP(pc.Spec.Source.Pod)
-		if err != nil {
-			return nil, err
-		}
-		packet.SourceIP = ip
+		srcIP, err = c.getPodIP(pc.Spec.Source.Pod)
 	} else if pc.Spec.Source.IP != nil {
-		packet.SourceIP = net.ParseIP(*pc.Spec.Source.IP)
-		if packet.SourceIP == nil {
-			return nil, errors.New("invalid IP address: " + *pc.Spec.Source.IP)
+		srcIP = net.ParseIP(*pc.Spec.Source.IP)
+		if srcIP == nil {
+			err = errors.New("invalid source IP address: " + *pc.Spec.Source.IP)
 		}
 	}
 
 	if pc.Spec.Destination.Pod != nil {
-		ip, err := c.getPodIP(pc.Spec.Destination.Pod)
-		if err != nil {
-			return nil, err
-		}
-		packet.DestinationIP = ip
+		dstIP, err = c.getPodIP(pc.Spec.Destination.Pod)
 	} else if pc.Spec.Destination.IP != nil {
-		packet.DestinationIP = net.ParseIP(*pc.Spec.Destination.IP)
-		if packet.DestinationIP == nil {
-			return nil, errors.New("invalid IP address: " + *pc.Spec.Destination.IP)
+		dstIP = net.ParseIP(*pc.Spec.Destination.IP)
+		if dstIP == nil {
+			err = errors.New("invalid destination IP address: " + *pc.Spec.Destination.IP)
 		}
 	}
-
-	if pc.Spec.Packet.TransportHeader.TCP != nil {
-		if pc.Spec.Packet.TransportHeader.TCP.SrcPort != nil {
-			packet.SourcePort = uint16(*pc.Spec.Packet.TransportHeader.TCP.SrcPort)
-		}
-		if pc.Spec.Packet.TransportHeader.TCP.DstPort != nil {
-			packet.DestinationPort = uint16(*pc.Spec.Packet.TransportHeader.TCP.DstPort)
-		}
-	} else if pc.Spec.Packet.TransportHeader.UDP != nil {
-		if pc.Spec.Packet.TransportHeader.UDP.SrcPort != nil {
-			packet.SourcePort = uint16(*pc.Spec.Packet.TransportHeader.UDP.SrcPort)
-		}
-		if pc.Spec.Packet.TransportHeader.UDP.DstPort != nil {
-			packet.DestinationPort = uint16(*pc.Spec.Packet.TransportHeader.UDP.DstPort)
-		}
-	}
-	return packet, nil
+	return
 }
 
 func (c *Controller) patchStatusIfNeeded(name string, status packetCapturePhase) error {

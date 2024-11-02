@@ -23,7 +23,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
-	binding "antrea.io/antrea/pkg/ovs/openflow"
 )
 
 var (
@@ -100,19 +99,16 @@ func TestCalInstructionsSize(t *testing.T) {
 
 func TestPacketCaptureCompileBPF(t *testing.T) {
 	tt := []struct {
-		name        string
-		matchPacket *binding.Packet
-		spec        *crdv1alpha1.PacketCaptureSpec
-		inst        []bpf.Instruction
+		name  string
+		srcIP net.IP
+		dstIP net.IP
+		spec  *crdv1alpha1.PacketCaptureSpec
+		inst  []bpf.Instruction
 	}{
 		{
-			name: "with-proto-and-port",
-			matchPacket: &binding.Packet{
-				SourceIP:        net.ParseIP("127.0.0.1"),
-				DestinationIP:   net.ParseIP("127.0.0.2"),
-				SourcePort:      uint16(testSrcPort),
-				DestinationPort: uint16(testDstPort),
-			},
+			name:  "with-proto-and-port",
+			srcIP: net.ParseIP("127.0.0.1"),
+			dstIP: net.ParseIP("127.0.0.2"),
 			spec: &crdv1alpha1.PacketCaptureSpec{
 				Packet: &crdv1alpha1.Packet{
 					Protocol: &testTCPProtocol,
@@ -147,7 +143,7 @@ func TestPacketCaptureCompileBPF(t *testing.T) {
 
 	for _, item := range tt {
 		t.Run(item.name, func(t *testing.T) {
-			result := CompilePacketFilter(item.spec.Packet, item.matchPacket)
+			result := CompilePacketFilter(item.spec.Packet, item.srcIP, item.dstIP)
 			assert.Equal(t, item.inst, result)
 		})
 	}
