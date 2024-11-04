@@ -163,10 +163,12 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 		if err := w.WritePacket(ci, data); err != nil {
 			return err
 		}
+		w.Flush()
 		return nil
 	}()
 
 	buf, err := io.ReadAll(f)
+
 	fileReader := bytes.NewReader(buf)
 	r, err := pcapgo.NewReader(fileReader)
 
