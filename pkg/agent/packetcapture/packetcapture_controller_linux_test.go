@@ -305,6 +305,7 @@ func TestPacketCaptureUploadPackets(t *testing.T) {
 		{
 			name: "sftp",
 			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{},
 				},
@@ -322,7 +323,6 @@ func TestPacketCaptureUploadPackets(t *testing.T) {
 			file, _ := defaultFS.Create(pc.name)
 			err := pcc.uploadPackets(pc.pc, file)
 			if pc.expectedErr != "" {
-				assert.NotNil(t, err)
 				assert.Equal(t, err.Error(), pc.expectedErr)
 			} else {
 				assert.Nil(t, err)
