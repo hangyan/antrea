@@ -344,14 +344,14 @@ func getPacketFileAndWriter(name string) (afero.File, *pcapgo.NgWriter, error) {
 	filePath := nameToPath(name)
 	var file afero.File
 	if _, err := os.Stat(filePath); err == nil {
-		return nil, nil, fmt.Errorf("the packet file %s already exists. This may be caused by an unexpected termination", filePath)
-	} else if os.IsNotExist(err) {
-		file, err = defaultFS.Create(filePath)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create pcapng file: %w", err)
+		klog.Warningf("the packet file %s already exists. This may be caused by an unexpected termination, will delete it", filePath)
+		if err := defaultFS.Remove(filePath); err != nil {
+			return nil, nil, err
 		}
-	} else {
-		return nil, nil, fmt.Errorf("couldn't check if the file exists: %w", err)
+	}
+	file, err := defaultFS.Create(filePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create pcapng file: %w", err)
 	}
 	writer, err := pcapgo.NewNgWriter(file, layers.LinkTypeEthernet)
 	if err != nil {
