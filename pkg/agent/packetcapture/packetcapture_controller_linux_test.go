@@ -263,7 +263,7 @@ func addPodInterface(ifaceStore interfacestore.InterfaceStore, podNamespace, pod
 
 // TestPacketCaptureControllerRun was used to validate the whole run process is working. It doesn't wait for
 // the testing pc to finish. on sandbox env, no good solution to open raw socket.
-func TestPacketCaptureControllerRun(t *testing.T) {
+func TestStartPacketCapture(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
 	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
@@ -317,6 +317,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	// expected to capture 1 packet
 	for _, cond := range result.Status.Conditions {
 		if cond.Type == crdv1alpha1.PacketCaptureCompleted {
+			assert.Equal(t, cond.Status, metav1.ConditionTrue)
+		}
+		if cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
 			assert.Equal(t, cond.Status, metav1.ConditionTrue)
 		}
 	}
