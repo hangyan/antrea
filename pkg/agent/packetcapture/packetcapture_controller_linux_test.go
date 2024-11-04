@@ -164,12 +164,13 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 			return err
 		}
 		return w.Flush()
-
 	}()
 	if err != nil {
 		return nil, err
 	}
-
+	if _, err := f.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("failed to upload to file server while setting offset: %v", err)
+	}
 	buf, err := io.ReadAll(f)
 	if err != nil {
 		return nil, err
