@@ -301,6 +301,7 @@ func TestPacketCaptureUploadPackets(t *testing.T) {
 		name        string
 		pc          *crdv1alpha1.PacketCapture
 		expectedErr string
+		uploader    *testUploader
 	}{
 		{
 			name: "sftp",
@@ -310,11 +311,13 @@ func TestPacketCaptureUploadPackets(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{},
 				},
 			},
+			uploader: &testUploader{fileName: "pc1.pcapng"},
 		},
 	}
 	for _, pc := range pcs {
 		t.Run(pc.name, func(t *testing.T) {
 			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
+			pcc.sftpUploader = pc.uploader
 			stopCh := make(chan struct{})
 			defer close(stopCh)
 			pcc.crdInformerFactory.Start(stopCh)
