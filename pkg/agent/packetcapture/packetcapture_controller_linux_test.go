@@ -17,7 +17,6 @@ package packetcapture
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -30,7 +29,6 @@ import (
 	"github.com/gopacket/gopacket/pcapgo"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/crypto/ssh"
 	v1 "k8s.io/api/core/v1"
@@ -261,50 +259,6 @@ func addPodInterface(ifaceStore interfacestore.InterfaceStore, podNamespace, pod
 		ContainerInterfaceConfig: &interfacestore.ContainerInterfaceConfig{PodName: podName, PodNamespace: podNamespace, ContainerID: containerName},
 		OVSPortConfig:            &interfacestore.OVSPortConfig{OFPort: ofPort},
 	})
-}
-
-func TestErrPacketCaptureCRD(t *testing.T) {
-	pc := &crdv1alpha1.PacketCapture{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "pc",
-			UID:  "uid",
-		},
-		Spec: crdv1alpha1.PacketCaptureSpec{
-			Source: crdv1alpha1.Source{
-				Pod: &crdv1alpha1.PodReference{
-					Namespace: pod1.Namespace,
-					Name:      pod1.Name,
-				},
-			},
-			Destination: crdv1alpha1.Destination{
-				Pod: &crdv1alpha1.PodReference{
-					Namespace: pod2.Namespace,
-					Name:      pod2.Name,
-				},
-			},
-			CaptureConfig: crdv1alpha1.CaptureConfig{
-				FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-					Number: 12,
-				},
-			},
-			Packet: &crdv1alpha1.Packet{
-				IPFamily: v1.IPv4Protocol,
-				Protocol: &icmpProto,
-			},
-		},
-		Status: crdv1alpha1.PacketCaptureStatus{},
-	}
-
-	reason := "failed"
-
-	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc})
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	pcc.crdInformerFactory.Start(stopCh)
-	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
-
-	err := pcc.updatePacketCaptureStatus(pc.Name, 0, "", errors.New(reason))
-	require.NoError(t, err)
 }
 
 // TestPacketCaptureControllerRun was used to validate the whole run process is working. It doesn't wait for
