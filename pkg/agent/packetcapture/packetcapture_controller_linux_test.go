@@ -217,6 +217,9 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 		ifaceStore,
 	)
 	pcController.sftpUploader = &testUploader{}
+	pcController.newPacketCapturerFn = func(pc *crdv1alpha1.PacketCapture) (PacketCapturer, error) {
+		return &testCapture{}, nil
+	}
 
 	return &fakePacketCaptureController{
 		Controller:         pcController,
@@ -317,7 +320,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				},
 				CaptureConfig: crdv1alpha1.CaptureConfig{
 					FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+						Number: 1,
 					},
 				},
 				Packet: &crdv1alpha1.Packet{
@@ -337,6 +340,11 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	pcc.informerFactory.WaitForCacheSync(stopCh)
 	go pcc.Run(stopCh)
 	time.Sleep(300 * time.Millisecond)
+
+	result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), pc.pc.Name, metav1.GetOptions{})
+	assert.Nil(t, nil)
+	t.Logf("status: %+v", pc.pc.Status)
+
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
