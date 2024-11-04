@@ -28,6 +28,7 @@ import (
 var (
 	testTCPProtocol       = intstr.FromInt(6)
 	testUDPProtocol       = intstr.FromInt(17)
+	testUDPProtoStr       = intstr.FromString("UDP")
 	testSrcPort     int32 = 80
 	testDstPort     int32 = 80
 )
@@ -124,6 +125,40 @@ func TestPacketCaptureCompileBPF(t *testing.T) {
 				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 14},
 				bpf.LoadAbsolute{Off: 23, Size: 1},                       // ip protocol
 				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x6, SkipFalse: 12}, // tcp
+				bpf.LoadAbsolute{Off: 26, Size: 4},
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x7f000001, SkipTrue: 0, SkipFalse: 10},
+				bpf.LoadAbsolute{Off: 30, Size: 4},
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x7f000002, SkipTrue: 0, SkipFalse: 8},
+				bpf.LoadAbsolute{Off: 20, Size: 2},                          // flags+fragment offset, since we need to calc where the src/dst port is
+				bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: 0x1fff, SkipTrue: 6}, // do we have an L4 header?
+				bpf.LoadMemShift{Off: 14},                                   // calculate size of IP header
+				bpf.LoadIndirect{Off: 14, Size: 2},                          // src port
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x50, SkipFalse: 3},    // port 23
+				bpf.LoadIndirect{Off: 16, Size: 2},                          // dst port
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x50, SkipFalse: 1},    // port 23
+				bpf.RetConstant{Val: 262144},
+				bpf.RetConstant{Val: 0},
+			},
+		},
+		{
+			name:  "udp-proto-str",
+			srcIP: net.ParseIP("127.0.0.1"),
+			dstIP: net.ParseIP("127.0.0.2"),
+			spec: &crdv1alpha1.PacketCaptureSpec{
+				Packet: &crdv1alpha1.Packet{
+					Protocol: &testUDPProtoStr,
+					TransportHeader: crdv1alpha1.TransportHeader{
+						UDP: &crdv1alpha1.UDPHeader{
+							SrcPort: &testSrcPort,
+							DstPort: &testDstPort,
+						}},
+				},
+			},
+			inst: []bpf.Instruction{
+				bpf.LoadAbsolute{Off: 12, Size: 2},
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x800, SkipFalse: 14},
+				bpf.LoadAbsolute{Off: 23, Size: 1},                        // ip protocol
+				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x11, SkipFalse: 12}, // tcp
 				bpf.LoadAbsolute{Off: 26, Size: 4},
 				bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x7f000001, SkipTrue: 0, SkipFalse: 10},
 				bpf.LoadAbsolute{Off: 30, Size: 4},
