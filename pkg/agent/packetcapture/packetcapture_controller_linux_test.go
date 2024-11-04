@@ -29,7 +29,6 @@ import (
 	"github.com/gopacket/gopacket/pcapgo"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/mock/gomock"
 	"golang.org/x/crypto/ssh"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -193,14 +192,12 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 type fakePacketCaptureController struct {
 	*Controller
 	kubeClient         kubernetes.Interface
-	mockController     *gomock.Controller
 	crdClient          *fakeversioned.Clientset
 	crdInformerFactory crdinformers.SharedInformerFactory
 	informerFactory    informers.SharedInformerFactory
 }
 
 func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Object, initObjects []runtime.Object) *fakePacketCaptureController {
-	controller := gomock.NewController(t)
 	objs := []runtime.Object{
 		&pod1,
 		&pod2,
@@ -238,7 +235,6 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 	return &fakePacketCaptureController{
 		Controller:         pcController,
 		kubeClient:         kubeClient,
-		mockController:     controller,
 		crdClient:          crdClient,
 		crdInformerFactory: crdInformerFactory,
 		informerFactory:    informerFactory,
