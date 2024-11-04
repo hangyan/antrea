@@ -60,7 +60,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&PacketCapture{},
 		&PacketCaptureList{},
 	)
-
 	metav1.AddToGroupVersion(
 		scheme,
 		SchemeGroupVersion,
