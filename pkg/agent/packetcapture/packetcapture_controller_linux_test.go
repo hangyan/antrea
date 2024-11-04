@@ -311,9 +311,8 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	defaultFS = afero.NewMemMapFs()
 	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
 	pc := struct {
-		name     string
-		pc       *crdv1alpha1.PacketCapture
-		newState *packetCaptureState
+		name string
+		pc   *crdv1alpha1.PacketCapture
 	}{
 		name: "start packetcapture",
 		pc: &crdv1alpha1.PacketCapture{
@@ -356,8 +355,15 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 
 	result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), pc.pc.Name, metav1.GetOptions{})
 	assert.Nil(t, nil)
-	t.Logf("status: %+v", result.Status)
 
+	// expected to capture 1 packet
+	for _, cond := range result.Status.Conditions {
+		if cond.Type == crdv1alpha1.PacketCaptureCompleted {
+			assert.Equal(t, cond.Status, metav1.ConditionTrue)
+		}
+	}
+	assert.Equal(t, result.Status.NumberCaptured, 1)
+	assert.Equal(t, result.Status.FilePath, "/tmp/antrea/packetcapture/packets/pc1.pcapng")
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
