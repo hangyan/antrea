@@ -361,8 +361,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			assert.Equal(t, cond.Status, metav1.ConditionTrue)
 		}
 	}
-	assert.Equal(t, result.Status.NumberCaptured, 1)
-	assert.Equal(t, result.Status.FilePath, "/tmp/antrea/packetcapture/packets/pc1.pcapng")
+	t.Log(result.Status)
+	assert.Equal(t, int32(1), result.Status.NumberCaptured)
+	assert.Equal(t, "/tmp/antrea/packetcapture/packets/pc1.pcapng", result.Status.FilePath)
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
