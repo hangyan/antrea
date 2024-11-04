@@ -343,7 +343,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 
 	result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), pc.pc.Name, metav1.GetOptions{})
 	assert.Nil(t, nil)
-	t.Logf("status: %+v", pc.pc.Status)
+	t.Logf("status: %+v", result.Status)
 
 }
 
