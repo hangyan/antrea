@@ -150,8 +150,9 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 	f, w, err := getPacketFileAndWriter("test-pcap-data")
 	if err != nil {
 		return nil, err
-
 	}
+	defer f.Close()
+	// simulate packet file
 	data := []byte{0xab, 0xcd, 0xef, 0x01, 0x02, 0x03, 0x04}
 	ci := gopacket.CaptureInfo{
 		Timestamp:     time.Unix(12345667, 1234567000),
@@ -159,12 +160,11 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 		CaptureLength: len(data),
 	}
 	err = func() error {
-		defer f.Close()
 		if err := w.WritePacket(ci, data); err != nil {
 			return err
 		}
-		w.Flush()
-		return nil
+		return w.Flush()
+
 	}()
 	if err != nil {
 		return nil, err
