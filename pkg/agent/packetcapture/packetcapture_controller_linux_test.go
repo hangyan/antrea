@@ -147,7 +147,7 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 	// create test os
 	defaultFS = afero.NewMemMapFs()
 	// create test pcap file
-	f, w, err := getPacketFileAndWriter("test-pcap-data")
+	f, _, err := getPacketFileAndWriter("test-pcap-data")
 	if err != nil {
 		return nil, err
 	}
@@ -160,10 +160,15 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 		CaptureLength: len(data),
 	}
 	err = func() error {
+		w := pcapgo.NewWriter(f)
+		if err := w.WriteFileHeader(65536, layers.LinkTypeEthernet); err != nil {
+			return err
+		}
+
 		if err := w.WritePacket(ci, data); err != nil {
 			return err
 		}
-		return w.Flush()
+		return nil
 	}()
 	if err != nil {
 		return nil, err
