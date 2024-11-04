@@ -336,7 +336,7 @@ func TestPacketCaptureUploadPackets(t *testing.T) {
 
 func TestMergeConditions(t *testing.T) {
 	tt := []struct {
-		name string 
+		name     string
 		new      []crdv1alpha1.PacketCaptureCondition
 		old      []crdv1alpha1.PacketCaptureCondition
 		expected []crdv1alpha1.PacketCaptureCondition
@@ -346,26 +346,37 @@ func TestMergeConditions(t *testing.T) {
 			name: "exist",
 			new: []crdv1alpha1.PacketCaptureCondition{
 				crdv1alpha1.PacketCaptureCondition{
-					Type: crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureCompleted,
 					LastTransitionTime: metav1.Now(),
 				},
-
+				crdv1alpha1.PacketCaptureCondition{
+					Type:               crdv1alpha1.PacketCaptureFileUploaded,
+					LastTransitionTime: metav1.Now(),
+				},
 			},
 			old: []crdv1alpha1.PacketCaptureCondition{
 				crdv1alpha1.PacketCaptureCondition{
-					Type: crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureCompleted,
 					LastTransitionTime: metav1.Now(),
 				},
-
+			},
+			expected: []crdv1alpha1.PacketCaptureCondition{
+				crdv1alpha1.PacketCaptureCondition{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+				},
+				crdv1alpha1.PacketCaptureCondition{
+					Type:               crdv1alpha1.PacketCaptureFileUploaded,
+					LastTransitionTime: metav1.Now(),
+				},
 			},
 		},
-		
 	}
 
-	func _, item := range tt {
+	for _, item := range tt {
 		t.Run(item.name, func(t *testing.T) {
-			assert.Equal(t, item.expected, mergeConditions(t.old,t.new))
+			result := mergeConditions(item.old, item.new)
+			assert.True(t, conditionSliceEqualsIgnoreLastTransitionTime(item.expected, result))
 		})
 	}
-}
 }
