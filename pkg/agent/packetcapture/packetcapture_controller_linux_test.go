@@ -15,12 +15,18 @@
 package packetcapture
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"testing"
 	"time"
 
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcapgo"
+	"github.com/gopacket/gopacket"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -132,6 +138,44 @@ func (uploader *testUploader) Upload(url string, fileName string, config *ssh.Cl
 		return fmt.Errorf("expected filename: %s for uploader, got: %s", uploader.fileName, fileName)
 	}
 	return nil
+}
+
+type testCapture struct {
+}
+
+func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error) {
+	// create test os
+	defaultFS = afero.NewMemMapFs()
+	// create test pcap file
+	f, w, err := getPacketFileAndWriter("test-pcap-data")
+	if err != nil {
+		return nil, err
+
+	}
+	data := []byte{0xab, 0xcd, 0xef, 0x01, 0x02, 0x03, 0x04}
+	ci := gopacket.CaptureInfo{
+		Timestamp:     time.Unix(12345667, 1234567000),
+		Length:        700,
+		CaptureLength: len(data),
+	}
+	err = func() error {
+		defer f.Close()
+		if err := w.WritePacket(ci, data); err != nil {
+			return err
+		}
+		return nil
+	}()
+
+	buf, err := io.ReadAll(f)
+	fileReader := bytes.NewReader(buf)
+	r, err := pcapgo.NewReader(fileReader)
+
+	if err != nil {
+		return nil, err
+	}
+
+	source := gopacket.NewPacketSource(r, layers.LayerTypeEthernet)
+	return source.Packets(), nil
 }
 
 type fakePacketCaptureController struct {
@@ -343,7 +387,7 @@ func TestMergeConditions(t *testing.T) {
 	}{
 
 		{
-			name: "exist",
+			name: "use-old",
 			new: []crdv1alpha1.PacketCaptureCondition{
 				crdv1alpha1.PacketCaptureCondition{
 					Type:               crdv1alpha1.PacketCaptureCompleted,
@@ -364,6 +408,38 @@ func TestMergeConditions(t *testing.T) {
 				crdv1alpha1.PacketCaptureCondition{
 					Type:               crdv1alpha1.PacketCaptureCompleted,
 					LastTransitionTime: metav1.Now(),
+				},
+				crdv1alpha1.PacketCaptureCondition{
+					Type:               crdv1alpha1.PacketCaptureFileUploaded,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+		},
+		{
+			name: "use-new",
+			new: []crdv1alpha1.PacketCaptureCondition{
+				crdv1alpha1.PacketCaptureCondition{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+					Status:             metav1.ConditionTrue,
+				},
+				crdv1alpha1.PacketCaptureCondition{
+					Type:               crdv1alpha1.PacketCaptureFileUploaded,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			old: []crdv1alpha1.PacketCaptureCondition{
+				crdv1alpha1.PacketCaptureCondition{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+					Status:             metav1.ConditionFalse,
+				},
+			},
+			expected: []crdv1alpha1.PacketCaptureCondition{
+				crdv1alpha1.PacketCaptureCondition{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+					Status:             metav1.ConditionTrue,
 				},
 				crdv1alpha1.PacketCaptureCondition{
 					Type:               crdv1alpha1.PacketCaptureFileUploaded,
