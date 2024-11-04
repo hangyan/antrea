@@ -340,7 +340,6 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				},
 			},
 		},
-		newState: &packetCaptureState{},
 	}
 
 	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
