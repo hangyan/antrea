@@ -15,12 +15,19 @@
 package packetcapture
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/gopacket/gopacket"
+	"github.com/gopacket/gopacket/layers"
+	"github.com/gopacket/gopacket/pcapgo"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -134,6 +141,57 @@ func (uploader *testUploader) Upload(url string, fileName string, config *ssh.Cl
 	return nil
 }
 
+type testCapture struct {
+}
+
+func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error) {
+	// create test os
+	defaultFS = afero.NewMemMapFs()
+	// create test pcap file
+	f, _, err := getPacketFileAndWriter("test-pcap-data")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	// simulate packet file
+	data := []byte{0xab, 0xcd, 0xef, 0x01, 0x02, 0x03, 0x04}
+	ci := gopacket.CaptureInfo{
+		Timestamp:     time.Unix(12345667, 1234567000),
+		Length:        700,
+		CaptureLength: len(data),
+	}
+	err = func() error {
+		w := pcapgo.NewWriter(f)
+		if err := w.WriteFileHeader(65536, layers.LinkTypeEthernet); err != nil {
+			return err
+		}
+
+		if err := w.WritePacket(ci, data); err != nil {
+			return err
+		}
+		return nil
+	}()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("failed to upload to file server while setting offset: %v", err)
+	}
+	buf, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	fileReader := bytes.NewReader(buf)
+	r, err := pcapgo.NewReader(fileReader)
+	if err != nil {
+		return nil, err
+	}
+
+	source := gopacket.NewPacketSource(r, layers.LayerTypeEthernet)
+	return source.Packets(), nil
+}
+
 type fakePacketCaptureController struct {
 	*Controller
 	kubeClient         kubernetes.Interface
@@ -173,6 +231,11 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 		ifaceStore,
 	)
 	pcController.sftpUploader = &testUploader{}
+	pcController.newPacketCapturerFn = func(pc *crdv1alpha1.PacketCapture) (PacketCapturer, error) {
+		return &testCapture{}, nil
+	}
+
+	os.Setenv("POD_NAME", "antrea-agent")
 
 	return &fakePacketCaptureController{
 		Controller:         pcController,
@@ -251,9 +314,8 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	defaultFS = afero.NewMemMapFs()
 	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
 	pc := struct {
-		name     string
-		pc       *crdv1alpha1.PacketCapture
-		newState *packetCaptureState
+		name string
+		pc   *crdv1alpha1.PacketCapture
 	}{
 		name: "start packetcapture",
 		pc: &crdv1alpha1.PacketCapture{
@@ -273,7 +335,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				},
 				CaptureConfig: crdv1alpha1.CaptureConfig{
 					FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 5,
+						Number: 1,
 					},
 				},
 				Packet: &crdv1alpha1.Packet{
@@ -281,7 +343,6 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				},
 			},
 		},
-		newState: &packetCaptureState{},
 	}
 
 	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
@@ -293,6 +354,18 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	pcc.informerFactory.WaitForCacheSync(stopCh)
 	go pcc.Run(stopCh)
 	time.Sleep(300 * time.Millisecond)
+
+	result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), pc.pc.Name, metav1.GetOptions{})
+	assert.Nil(t, nil)
+
+	// expected to capture 1 packet
+	for _, cond := range result.Status.Conditions {
+		if cond.Type == crdv1alpha1.PacketCaptureCompleted {
+			assert.Equal(t, cond.Status, metav1.ConditionTrue)
+		}
+	}
+	assert.Equal(t, int32(1), result.Status.NumberCaptured)
+	assert.Equal(t, "antrea-agent:/tmp/antrea/packetcapture/packets/pc1.pcapng", result.Status.FilePath)
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
@@ -301,25 +374,23 @@ func TestPacketCaptureUploadPackets(t *testing.T) {
 		name        string
 		pc          *crdv1alpha1.PacketCapture
 		expectedErr string
+		uploader    *testUploader
 	}{
-		{
-			name: "no-upload",
-			pc: &crdv1alpha1.PacketCapture{
-				Status: crdv1alpha1.PacketCaptureStatus{},
-			},
-		},
 		{
 			name: "sftp",
 			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{},
 				},
 			},
+			uploader: &testUploader{fileName: "pc1.pcapng"},
 		},
 	}
 	for _, pc := range pcs {
 		t.Run(pc.name, func(t *testing.T) {
 			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
+			pcc.sftpUploader = pc.uploader
 			stopCh := make(chan struct{})
 			defer close(stopCh)
 			pcc.crdInformerFactory.Start(stopCh)
@@ -328,11 +399,89 @@ func TestPacketCaptureUploadPackets(t *testing.T) {
 			file, _ := defaultFS.Create(pc.name)
 			err := pcc.uploadPackets(pc.pc, file)
 			if pc.expectedErr != "" {
-				assert.NotNil(t, err)
 				assert.Equal(t, err.Error(), pc.expectedErr)
 			} else {
 				assert.Nil(t, err)
 			}
+		})
+	}
+}
+
+func TestMergeConditions(t *testing.T) {
+	tt := []struct {
+		name     string
+		new      []crdv1alpha1.PacketCaptureCondition
+		old      []crdv1alpha1.PacketCaptureCondition
+		expected []crdv1alpha1.PacketCaptureCondition
+	}{
+
+		{
+			name: "use-old",
+			new: []crdv1alpha1.PacketCaptureCondition{
+				{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+				},
+				{
+					Type:               crdv1alpha1.PacketCaptureFileUploaded,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			old: []crdv1alpha1.PacketCaptureCondition{
+				{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			expected: []crdv1alpha1.PacketCaptureCondition{
+				{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+				},
+				{
+					Type:               crdv1alpha1.PacketCaptureFileUploaded,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+		},
+		{
+			name: "use-new",
+			new: []crdv1alpha1.PacketCaptureCondition{
+				{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+					Status:             metav1.ConditionTrue,
+				},
+				{
+					Type:               crdv1alpha1.PacketCaptureFileUploaded,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+			old: []crdv1alpha1.PacketCaptureCondition{
+				{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+					Status:             metav1.ConditionFalse,
+				},
+			},
+			expected: []crdv1alpha1.PacketCaptureCondition{
+				{
+					Type:               crdv1alpha1.PacketCaptureCompleted,
+					LastTransitionTime: metav1.Now(),
+					Status:             metav1.ConditionTrue,
+				},
+				{
+					Type:               crdv1alpha1.PacketCaptureFileUploaded,
+					LastTransitionTime: metav1.Now(),
+				},
+			},
+		},
+	}
+
+	for _, item := range tt {
+		t.Run(item.name, func(t *testing.T) {
+			result := mergeConditions(item.old, item.new)
+			assert.True(t, conditionSliceEqualsIgnoreLastTransitionTime(item.expected, result))
 		})
 	}
 }

@@ -194,6 +194,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		return
 	}
 
+	// check the captures that are waiting in line.
+	go c.processWaitingCaptures()
 	for i := 0; i < defaultWorkers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -223,8 +225,6 @@ func nameToPath(name string) string {
 }
 
 func (c *Controller) worker() {
-	// check the captures that are waiting in line.
-	go c.processWaitingCaptures()
 	for c.processPacketCaptureItem() {
 	}
 }
@@ -262,8 +262,6 @@ func (c *Controller) processPacketCaptureItem() bool {
 			klog.ErrorS(err, "Error syncing PacketCapture, requeueing", "key", key)
 		} else {
 			c.queue.Forget(key)
-			delete(c.captures, key)
-			c.cleanupPacketCapture(key)
 		}
 	}
 	return true
@@ -272,8 +270,13 @@ func (c *Controller) processPacketCaptureItem() bool {
 func (c *Controller) syncPacketCapture(pcName string) error {
 	pc, err := c.packetCaptureLister.Get(pcName)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			delete(c.captures, pcName)
+			c.cleanupPacketCapture(pcName)
+		}
 		return err
 	}
+
 	// capture will not happen on this node.
 	device := c.getTargetCaptureDevice(pc)
 	if device == nil {
@@ -341,14 +344,14 @@ func getPacketFileAndWriter(name string) (afero.File, *pcapgo.NgWriter, error) {
 	filePath := nameToPath(name)
 	var file afero.File
 	if _, err := os.Stat(filePath); err == nil {
-		return nil, nil, fmt.Errorf("the packet file %s already exists. This may be caused by an unexpected termination", filePath)
-	} else if os.IsNotExist(err) {
-		file, err = defaultFS.Create(filePath)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create pcapng file: %w", err)
+		klog.Warningf("the packet file %s already exists. This may be caused by an unexpected termination, will delete it", filePath)
+		if err := defaultFS.Remove(filePath); err != nil {
+			return nil, nil, err
 		}
-	} else {
-		return nil, nil, fmt.Errorf("couldn't check if the file exists: %w", err)
+	}
+	file, err := defaultFS.Create(filePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create pcapng file: %w", err)
 	}
 	writer, err := pcapgo.NewNgWriter(file, layers.LinkTypeEthernet)
 	if err != nil {
