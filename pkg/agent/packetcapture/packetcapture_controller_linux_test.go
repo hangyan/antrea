@@ -166,12 +166,17 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 		w.Flush()
 		return nil
 	}()
+	if err != nil {
+		return nil, err
+	}
 
 	buf, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
 
 	fileReader := bytes.NewReader(buf)
 	r, err := pcapgo.NewReader(fileReader)
-
 	if err != nil {
 		return nil, err
 	}
