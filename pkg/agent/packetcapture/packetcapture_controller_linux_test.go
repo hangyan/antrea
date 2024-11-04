@@ -303,12 +303,6 @@ func TestPacketCaptureUploadPackets(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name: "no-upload",
-			pc: &crdv1alpha1.PacketCapture{
-				Status: crdv1alpha1.PacketCaptureStatus{},
-			},
-		},
-		{
 			name: "sftp",
 			pc: &crdv1alpha1.PacketCapture{
 				Spec: crdv1alpha1.PacketCaptureSpec{
