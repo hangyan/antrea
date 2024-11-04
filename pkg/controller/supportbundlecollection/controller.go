@@ -44,7 +44,11 @@ import (
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
 	crdlisters "antrea.io/antrea/pkg/client/listers/crd/v1alpha1"
 	"antrea.io/antrea/pkg/controller/types"
+<<<<<<< HEAD
 	"antrea.io/antrea/pkg/util/auth"
+=======
+	"antrea.io/antrea/pkg/util/ftp"
+>>>>>>> 913472879 (Add packetcatpure feature)
 	"antrea.io/antrea/pkg/util/k8s"
 )
 

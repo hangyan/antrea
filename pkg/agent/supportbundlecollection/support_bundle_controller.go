@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/spf13/afero"
-	"golang.org/x/crypto/ssh"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -39,6 +38,7 @@ import (
 	"antrea.io/antrea/pkg/querier"
 	"antrea.io/antrea/pkg/support"
 	"antrea.io/antrea/pkg/util/compress"
+	"antrea.io/antrea/pkg/util/ftp"
 	"antrea.io/antrea/pkg/util/k8s"
 	"antrea.io/antrea/pkg/util/sftp"
 )
@@ -46,9 +46,14 @@ import (
 type ProtocolType string
 
 const (
+<<<<<<< HEAD
 	sftpProtocol ProtocolType = "sftp"
 
 	controllerName = "SupportBundleCollectionController"
+=======
+	sftpProtocol   ProtocolType = "sftp"
+	controllerName string       = "SupportBundleCollectionController"
+>>>>>>> 913472879 (Add packetcatpure feature)
 )
 
 var (
@@ -72,7 +77,11 @@ type SupportBundleController struct {
 	npq                          querier.AgentNetworkPolicyInfoQuerier
 	v4Enabled                    bool
 	v6Enabled                    bool
+<<<<<<< HEAD
 	sftpUploader                 sftp.Uploader
+=======
+	sftpUploader                 ftp.Uploader
+>>>>>>> 913472879 (Add packetcatpure feature)
 }
 
 func NewSupportBundleController(nodeName string,
@@ -97,7 +106,11 @@ func NewSupportBundleController(nodeName string,
 		npq:          npq,
 		v4Enabled:    v4Enabled,
 		v6Enabled:    v6Enabled,
+<<<<<<< HEAD
 		sftpUploader: sftp.NewUploader(),
+=======
+		sftpUploader: &ftp.SftpUploader{},
+>>>>>>> 913472879 (Add packetcatpure feature)
 	}
 	return c
 }
