@@ -34,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
@@ -302,7 +303,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 	pcc.informerFactory.Start(stopCh)
 	pcc.informerFactory.WaitForCacheSync(stopCh)
-	go pcc.Run(stopCh)
+	// check the captures that are waiting in line.
+	go pcc.processWaitingCaptures()
+	go wait.Until(pcc.worker, time.Second, stopCh)
 	time.Sleep(300 * time.Millisecond)
 
 	result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), pc.pc.Name, metav1.GetOptions{})
