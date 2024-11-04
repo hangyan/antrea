@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -234,6 +235,8 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 		return &testCapture{}, nil
 	}
 
+	os.Setenv("POD_NAME", "antrea-agent")
+
 	return &fakePacketCaptureController{
 		Controller:         pcController,
 		kubeClient:         kubeClient,
@@ -361,9 +364,8 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			assert.Equal(t, cond.Status, metav1.ConditionTrue)
 		}
 	}
-	t.Log(result.Status)
 	assert.Equal(t, int32(1), result.Status.NumberCaptured)
-	assert.Equal(t, "/tmp/antrea/packetcapture/packets/pc1.pcapng", result.Status.FilePath)
+	assert.Equal(t, "antrea-agent:/tmp/antrea/packetcapture/packets/pc1.pcapng", result.Status.FilePath)
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
