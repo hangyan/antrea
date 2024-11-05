@@ -284,7 +284,9 @@ func TestStartPacketCapture(t *testing.T) {
 				Packet: &crdv1alpha1.Packet{
 					Protocol: &icmpProto,
 				},
-				FileServer: &crdv1alpha1.PacketCaptureFileServer{},
+				FileServer: &crdv1alpha1.PacketCaptureFileServer{
+					URL: "sftp://127.0.0.1:22/aaa"
+				},
 			},
 		},
 	}
@@ -313,7 +315,7 @@ func TestStartPacketCapture(t *testing.T) {
 		}
 	}
 	assert.Equal(t, int32(1), result.Status.NumberCaptured)
-	assert.Equal(t, "antrea-agent:/tmp/antrea/packetcapture/packets/pc1.pcapng", result.Status.FilePath)
+	assert.Equal(t, "sftp://127.0.0.1:22/aaa/pc1.pcapng", result.Status.FilePath)
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
