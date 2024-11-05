@@ -564,7 +564,7 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 			},
 		},
 		{
-			name:       "unknown",
+			name:       "running",
 			err:        nil,
 			num:        15,
 			captureNum: 1,
@@ -572,12 +572,8 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 				NumberCaptured: 1,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
-						Type:   crdv1alpha1.PacketCaptureCompleted,
-						Status: metav1.ConditionStatus(v1.ConditionUnknown),
-					},
-					{
-						Type:   crdv1alpha1.PacketCaptureFileUploaded,
-						Status: metav1.ConditionStatus(v1.ConditionUnknown),
+						Type:   crdv1alpha1.PacketCaptureRunning,
+						Status: metav1.ConditionStatus(v1.ConditionTrue),
 					},
 				},
 			},

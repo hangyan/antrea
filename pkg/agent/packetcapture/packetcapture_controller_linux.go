@@ -752,17 +752,10 @@ func (c *Controller) updatePacketCaptureStatus(name string, num int32, path stri
 		} else {
 			updatedStatus.Conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
-					Status:             metav1.ConditionStatus(v1.ConditionUnknown),
+					Type:               crdv1alpha1.PacketCaptureRunning,
+					Status:             metav1.ConditionStatus(v1.ConditionTrue),
 					LastTransitionTime: t,
 				},
-			}
-			if toUpdate.Spec.FileServer != nil {
-				updatedStatus.Conditions = append(updatedStatus.Conditions, crdv1alpha1.PacketCaptureCondition{
-					Type:               crdv1alpha1.PacketCaptureFileUploaded,
-					Status:             metav1.ConditionStatus(v1.ConditionUnknown),
-					LastTransitionTime: t,
-				})
 			}
 		}
 
