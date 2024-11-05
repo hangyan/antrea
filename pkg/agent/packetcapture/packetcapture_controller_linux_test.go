@@ -29,6 +29,7 @@ import (
 	"github.com/gopacket/gopacket/pcapgo"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/crypto/ssh"
 	v1 "k8s.io/api/core/v1"
@@ -57,7 +58,9 @@ var (
 	ofPortPod1 = uint32(1)
 	ofPortPod2 = uint32(2)
 
-	icmpProto = intstr.FromString("ICMP")
+	icmpProto    = intstr.FromString("ICMP")
+	udpProto     = intstr.FromInt(17)
+	shortTimeout = uint16(1)
 
 	pod1 = v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -170,6 +173,14 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 	}
 
 	fileReader := bytes.NewReader(buf)
+
+	// empty reader for test udp
+	if packet.Protocol != nil {
+		if packet.Protocol.IntVal == 17 {
+			fileReader = bytes.NewReader(nil)
+		}
+	}
+
 	r, err := pcapgo.NewReader(fileReader)
 	if err != nil {
 		return nil, err
@@ -255,66 +266,117 @@ func TestStartPacketCapture(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
 	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
-	pc := struct {
-		name string
-		pc   *crdv1alpha1.PacketCapture
+	pcs := []struct {
+		name                  string
+		pc                    *crdv1alpha1.PacketCapture
+		expectConditionStatus metav1.ConditionStatus
 	}{
-		name: "start packetcapture",
-		pc: &crdv1alpha1.PacketCapture{
-			ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
-			Spec: crdv1alpha1.PacketCaptureSpec{
-				Source: crdv1alpha1.Source{
-					Pod: &crdv1alpha1.PodReference{
-						Namespace: pod1.Namespace,
-						Name:      pod1.Name,
+		{
+			name:                  "start packetcapture",
+			expectConditionStatus: metav1.ConditionTrue,
+			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
+				Spec: crdv1alpha1.PacketCaptureSpec{
+					Source: crdv1alpha1.Source{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
+					},
+					Destination: crdv1alpha1.Destination{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
+					},
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 1,
+						},
+					},
+					Packet: &crdv1alpha1.Packet{
+						Protocol: &icmpProto,
+					},
+					FileServer: &crdv1alpha1.PacketCaptureFileServer{
+						URL: "sftp://127.0.0.1:22/aaa",
 					},
 				},
-				Destination: crdv1alpha1.Destination{
-					Pod: &crdv1alpha1.PodReference{
-						Namespace: pod2.Namespace,
-						Name:      pod2.Name,
+			},
+		},
+		{
+			name:                  "failed-case",
+			expectConditionStatus: metav1.ConditionFalse,
+			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
+				Spec: crdv1alpha1.PacketCaptureSpec{
+					Source: crdv1alpha1.Source{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
 					},
-				},
-				CaptureConfig: crdv1alpha1.CaptureConfig{
-					FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-						Number: 1,
+					Destination: crdv1alpha1.Destination{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
 					},
-				},
-				Packet: &crdv1alpha1.Packet{
-					Protocol: &icmpProto,
-				},
-				FileServer: &crdv1alpha1.PacketCaptureFileServer{
-					URL: "sftp://127.0.0.1:22/aaa",
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 5,
+						},
+					},
+					Packet: &crdv1alpha1.Packet{
+						Protocol: &udpProto,
+					},
+					FileServer: &crdv1alpha1.PacketCaptureFileServer{
+						URL: "sftp://127.0.0.1:22/aaa",
+					},
+					Timeout: &shortTimeout,
 				},
 			},
 		},
 	}
 
-	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
-	pcc.sftpUploader = &testUploader{fileName: "pc1.pcapng", url: "sftp://127.0.0.1:22/aaa"}
+	objs := []runtime.Object{}
+	for _, pc := range pcs {
+		objs = append(objs, pc.pc)
+	}
+	pcc := newFakePacketCaptureController(t, nil, objs)
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	pcc.crdInformerFactory.Start(stopCh)
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 	pcc.informerFactory.Start(stopCh)
 	pcc.informerFactory.WaitForCacheSync(stopCh)
-	pcc.startPacketCapture(pc.pc.Name)
-	time.Sleep(300 * time.Millisecond)
-
-	result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), pc.pc.Name, metav1.GetOptions{})
-	assert.Nil(t, nil)
-
-	// expected to capture 1 packet
-	for _, cond := range result.Status.Conditions {
-		if cond.Type == crdv1alpha1.PacketCaptureCompleted {
-			assert.Equal(t, metav1.ConditionTrue, cond.Status)
+	for _, item := range pcs {
+		t.Run(item.name, func(t *testing.T) {
+			fileName := item.pc.Name + ".pcapng"
+			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa"}
+		})
+		pcc.startPacketCapture(item.pc.Name)
+		time.Sleep(300 * time.Millisecond)
+		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
+		assert.Nil(t, nil)
+		for _, cond := range result.Status.Conditions {
+			if cond.Type == crdv1alpha1.PacketCaptureCompleted {
+				assert.Equal(t, item.expectConditionStatus, cond.Status)
+			}
+			if cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
+				assert.Equal(t, item.expectConditionStatus, cond.Status)
+			}
 		}
-		if cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
-			assert.Equal(t, metav1.ConditionTrue, cond.Status)
+
+		if item.expectConditionStatus == metav1.ConditionTrue {
+			assert.Equal(t, int32(1), result.Status.NumberCaptured)
+			assert.Equal(t, "sftp://127.0.0.1:22/aaa/pc1.pcapng", result.Status.FilePath)
 		}
+
+		// delete cr
+		err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
+		require.NoError(t, err)
 	}
-	assert.Equal(t, int32(1), result.Status.NumberCaptured)
-	assert.Equal(t, "sftp://127.0.0.1:22/aaa/pc1.pcapng", result.Status.FilePath)
+
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
