@@ -292,7 +292,7 @@ func TestStartPacketCapture(t *testing.T) {
 	}
 
 	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
-	pcc.sftpUploader = &testUploader{fileName: "pc1.pcapng"}
+	pcc.sftpUploader = &testUploader{fileName: "pc1.pcapng", url: "sftp://127.0.0.1:22/aaa"}
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	pcc.crdInformerFactory.Start(stopCh)
