@@ -177,8 +177,7 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 	// empty reader for test udp
 	if packet.Protocol != nil {
 		if packet.Protocol.IntVal == 17 {
-			out := make(chan gopacket.Packet)
-			return out, nil
+			fileReader = bytes.NewReader(nil)
 		}
 	}
 
@@ -305,7 +304,7 @@ func TestStartPacketCapture(t *testing.T) {
 			},
 		},
 		{
-			name:                  "timeout-case",
+			name:                  "failed-case",
 			expectConditionStatus: metav1.ConditionFalse,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
