@@ -176,7 +176,8 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 	// empty reader for test udp
 	if packet.Protocol != nil {
 		if packet.Protocol.IntVal == 17 {
-			fileReader = bytes.NewReader([]byte{})
+			out := make(chan gopacket.Packet)
+			return out, nil
 		}
 	}
 
