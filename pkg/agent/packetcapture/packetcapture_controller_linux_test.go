@@ -58,9 +58,9 @@ var (
 	ofPortPod1 = uint32(1)
 	ofPortPod2 = uint32(2)
 
-	icmpProto = intstr.FromString("ICMP")
-	udpProto  = intstr.FromInt(17)
-	shortTimeout := uint16(1)
+	icmpProto    = intstr.FromString("ICMP")
+	udpProto     = intstr.FromInt(17)
+	shortTimeout = uint16(1)
 
 	pod1 = v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
