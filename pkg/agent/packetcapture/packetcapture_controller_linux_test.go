@@ -59,6 +59,7 @@ var (
 	ofPortPod2 = uint32(2)
 
 	icmpProto = intstr.FromString("ICMP")
+	udpProto  = intstr.FromInt(17)
 
 	pod1 = v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -171,6 +172,14 @@ func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 	}
 
 	fileReader := bytes.NewReader(buf)
+
+	// empty reader for test udp
+	if packet.Protocol != nil {
+		if packet.Protocol.IntVal == 17 {
+			fileReader = bytes.NewReader([]byte{})
+		}
+	}
+
 	r, err := pcapgo.NewReader(fileReader)
 	if err != nil {
 		return nil, err
@@ -313,12 +322,11 @@ func TestStartPacketCapture(t *testing.T) {
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							// we only have one packet data, so it will timeout.
 							Number: 5,
 						},
 					},
 					Packet: &crdv1alpha1.Packet{
-						Protocol: &icmpProto,
+						Protocol: &udpProto,
 					},
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
@@ -341,7 +349,7 @@ func TestStartPacketCapture(t *testing.T) {
 	pcc.informerFactory.WaitForCacheSync(stopCh)
 	for _, item := range pcs {
 		t.Run(item.name, func(t *testing.T) {
-			fileName := item.pc.Name + "pcapng"
+			fileName := item.pc.Name + ".pcapng"
 			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa"}
 		})
 		pcc.startPacketCapture(item.pc.Name)
