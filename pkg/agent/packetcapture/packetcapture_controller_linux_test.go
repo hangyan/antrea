@@ -17,6 +17,7 @@ package packetcapture
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -35,6 +36,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -114,6 +116,38 @@ func generateTestSecret() *v1.Secret {
 			"password": []byte("BBBCCC"),
 		},
 	}
+}
+
+func genTestCR(name string) *crdv1alpha1.PacketCapture {
+	result := &crdv1alpha1.PacketCapture{
+		ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(fmt.Sprintf("uid-", name))},
+		Spec: crdv1alpha1.PacketCaptureSpec{
+			Source: crdv1alpha1.Source{
+				Pod: &crdv1alpha1.PodReference{
+					Namespace: pod1.Namespace,
+					Name:      pod1.Name,
+				},
+			},
+			Destination: crdv1alpha1.Destination{
+				Pod: &crdv1alpha1.PodReference{
+					Namespace: pod2.Namespace,
+					Name:      pod2.Name,
+				},
+			},
+			CaptureConfig: crdv1alpha1.CaptureConfig{
+				FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+					Number: 1,
+				},
+			},
+			Packet: &crdv1alpha1.Packet{
+				Protocol: &icmpProto,
+			},
+			FileServer: &crdv1alpha1.PacketCaptureFileServer{
+				URL: "sftp://127.0.0.1:22/aaa",
+			},
+		},
+	}
+	return result
 }
 
 type testUploader struct {
@@ -495,4 +529,46 @@ func TestMergeConditions(t *testing.T) {
 			assert.True(t, conditionSliceEqualsIgnoreLastTransitionTime(item.expected, result))
 		})
 	}
+}
+
+func TestUpdatePacketCaptureStatus(t *testing.T) {
+	tt := []struct {
+		name           string
+		num            int32
+		path           string
+		err            error
+		expectedStatus *crdv1alpha1.PacketCaptureStatus
+	}{
+		{
+			name:           "completed-with-error",
+			err:            errors.New("failed to upload"),
+			num:            15,
+			path:           "/tmp/a.pcapng",
+			expectedStatus: &crdv1alpha1.PacketCaptureStatus{},
+		},
+	}
+
+	objs := []runtime.Object{}
+	for _, item := range tt {
+		objs = append(objs, genTestCR(item.name))
+	}
+
+	pcc := newFakePacketCaptureController(t, nil, objs)
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	pcc.crdInformerFactory.Start(stopCh)
+	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
+	pcc.informerFactory.Start(stopCh)
+	pcc.informerFactory.WaitForCacheSync(stopCh)
+
+	for _, item := range tt {
+		t.Run(item.name, func(t *testing.T) {
+			err := pcc.updatePacketCaptureStatus(item.name, item.num, item.path, item.err)
+			require.NoError(t, err)
+			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), item.name, metav1.GetOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, true, packetCaptureStatusEqual(*item.expectedStatus, result.Status))
+		})
+	}
+
 }
