@@ -535,15 +535,17 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 	tt := []struct {
 		name           string
 		num            int32
+		captureNum     int32
 		path           string
 		err            error
 		expectedStatus *crdv1alpha1.PacketCaptureStatus
 	}{
 		{
-			name: "completed-with-error",
-			err:  errors.New("failed to upload"),
-			num:  15,
-			path: "/tmp/a.pcapng",
+			name:       "upload-error",
+			err:        errors.New("failed to upload"),
+			num:        15,
+			captureNum: 15,
+			path:       "/tmp/a.pcapng",
 			expectedStatus: &crdv1alpha1.PacketCaptureStatus{
 				NumberCaptured: 15,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
@@ -553,9 +555,30 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 						Reason: "Succeed",
 					},
 					{
-						Type:   crdv1alpha1.PacketCaptureFileUploaded,
+						Type:    crdv1alpha1.PacketCaptureFileUploaded,
+						Status:  metav1.ConditionStatus(v1.ConditionFalse),
+						Reason:  "UploadFailed",
+						Message: "failed to uplaod",
+					},
+				},
+			},
+		},
+		{
+			name:       "unknown",
+			err:        nil,
+			num:        15,
+			captureNum: 1,
+			path:       "/tmp/a.pcapng",
+			expectedStatus: &crdv1alpha1.PacketCaptureStatus{
+				NumberCaptured: 15,
+				Conditions: []crdv1alpha1.PacketCaptureCondition{
+					{
+						Type:   crdv1alpha1.PacketCaptureCompleted,
 						Status: metav1.ConditionStatus(v1.ConditionTrue),
-						Reason: "Succeed",
+					},
+					{
+						Type:   crdv1alpha1.PacketCaptureFileUploaded,
+						Status: metav1.ConditionStatus(v1.ConditionFalse),
 					},
 				},
 			},
@@ -577,7 +600,7 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 
 	for _, item := range tt {
 		t.Run(item.name, func(t *testing.T) {
-			err := pcc.updatePacketCaptureStatus(item.name, item.num, item.path, item.err)
+			err := pcc.updatePacketCaptureStatus(item.name, item.captureNum, item.path, item.err)
 			require.NoError(t, err)
 			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), item.name, metav1.GetOptions{})
 			require.NoError(t, err)
