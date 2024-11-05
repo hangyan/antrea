@@ -285,7 +285,7 @@ func TestStartPacketCapture(t *testing.T) {
 					Protocol: &icmpProto,
 				},
 				FileServer: &crdv1alpha1.PacketCaptureFileServer{
-					URL: "sftp://127.0.0.1:22/aaa"
+					URL: "sftp://127.0.0.1:22/aaa",
 				},
 			},
 		},
