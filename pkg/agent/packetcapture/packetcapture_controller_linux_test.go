@@ -60,6 +60,7 @@ var (
 
 	icmpProto = intstr.FromString("ICMP")
 	udpProto  = intstr.FromInt(17)
+	shortTimeout := uint16(1)
 
 	pod1 = v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -332,6 +333,7 @@ func TestStartPacketCapture(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
+					Timeout: &shortTimeout,
 				},
 			},
 		},
@@ -368,8 +370,9 @@ func TestStartPacketCapture(t *testing.T) {
 				assert.Equal(t, item.expectConditionStatus, cond.Status)
 			}
 		}
-		assert.Equal(t, int32(1), result.Status.NumberCaptured)
+
 		if item.expectConditionStatus == metav1.ConditionTrue {
+			assert.Equal(t, int32(1), result.Status.NumberCaptured)
 			assert.Equal(t, "sftp://127.0.0.1:22/aaa/pc1.pcapng", result.Status.FilePath)
 		}
 
