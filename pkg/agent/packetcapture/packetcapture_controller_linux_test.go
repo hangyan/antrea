@@ -306,12 +306,13 @@ func TestStartPacketCapture(t *testing.T) {
 	assert.Nil(t, nil)
 
 	// expected to capture 1 packet
+	t.Log(result.Status)
 	for _, cond := range result.Status.Conditions {
 		if cond.Type == crdv1alpha1.PacketCaptureCompleted {
-			assert.Equal(t, cond.Status, metav1.ConditionTrue)
+			assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		}
 		if cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
-			assert.Equal(t, cond.Status, metav1.ConditionTrue)
+			assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		}
 	}
 	assert.Equal(t, int32(1), result.Status.NumberCaptured)
