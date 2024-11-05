@@ -118,7 +118,7 @@ func generateTestSecret() *v1.Secret {
 	}
 }
 
-func genTestCR(name string) *crdv1alpha1.PacketCapture {
+func genTestCR(name string, num int32) *crdv1alpha1.PacketCapture {
 	result := &crdv1alpha1.PacketCapture{
 		ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(fmt.Sprintf("uid-%s", name))},
 		Spec: crdv1alpha1.PacketCaptureSpec{
@@ -136,7 +136,7 @@ func genTestCR(name string) *crdv1alpha1.PacketCapture {
 			},
 			CaptureConfig: crdv1alpha1.CaptureConfig{
 				FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-					Number: 1,
+					Number: num,
 				},
 			},
 			Packet: &crdv1alpha1.Packet{
@@ -540,17 +540,31 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 		expectedStatus *crdv1alpha1.PacketCaptureStatus
 	}{
 		{
-			name:           "completed-with-error",
-			err:            errors.New("failed to upload"),
-			num:            15,
-			path:           "/tmp/a.pcapng",
-			expectedStatus: &crdv1alpha1.PacketCaptureStatus{},
+			name: "completed-with-error",
+			err:  errors.New("failed to upload"),
+			num:  15,
+			path: "/tmp/a.pcapng",
+			expectedStatus: &crdv1alpha1.PacketCaptureStatus{
+				NumberCaptured: 15,
+				Conditions: []crdv1alpha1.PacketCaptureCondition{
+					{
+						Type:   crdv1alpha1.PacketCaptureCompleted,
+						Status: metav1.ConditionStatus(v1.ConditionTrue),
+						Reason: "Succeed",
+					},
+					{
+						Type:   crdv1alpha1.PacketCaptureFileUploaded,
+						Status: metav1.ConditionStatus(v1.ConditionTrue),
+						Reason: "Succeed",
+					},
+				},
+			},
 		},
 	}
 
 	objs := []runtime.Object{}
 	for _, item := range tt {
-		objs = append(objs, genTestCR(item.name))
+		objs = append(objs, genTestCR(item.name, item.num))
 	}
 
 	pcc := newFakePacketCaptureController(t, nil, objs)
