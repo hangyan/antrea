@@ -350,7 +350,7 @@ func TestStartPacketCapture(t *testing.T) {
 		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
 		assert.Nil(t, nil)
 
-		// expected to capture 1 packet
+		t.Log(result.Status)
 		for _, cond := range result.Status.Conditions {
 			if cond.Type == crdv1alpha1.PacketCaptureCompleted {
 				assert.Equal(t, item.expectConditionStatus, cond.Status)
