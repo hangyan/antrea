@@ -257,13 +257,13 @@ func TestStartPacketCapture(t *testing.T) {
 	defaultFS = afero.NewMemMapFs()
 	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
 	pcs := []struct {
-		name            string
-		pc              *crdv1alpha1.PacketCapture
-		expectCompleted bool
+		name                  string
+		pc                    *crdv1alpha1.PacketCapture
+		expectConditionStatus metav1.ConditionStatus
 	}{
 		{
-			name:            "start packetcapture",
-			expectCompleted: true,
+			name:                  "start packetcapture",
+			expectConditionStatus: metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -294,7 +294,8 @@ func TestStartPacketCapture(t *testing.T) {
 			},
 		},
 		{
-			name: "timeout-case",
+			name:                  "timeout-case",
+			expectConditionStatus: metav1.ConditionFalse,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -352,14 +353,14 @@ func TestStartPacketCapture(t *testing.T) {
 		// expected to capture 1 packet
 		for _, cond := range result.Status.Conditions {
 			if cond.Type == crdv1alpha1.PacketCaptureCompleted {
-				assert.Equal(t, item.expectCompleted, cond.Status)
+				assert.Equal(t, item.expectConditionStatus, cond.Status)
 			}
 			if cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
-				assert.Equal(t, item.expectCompleted, cond.Status)
+				assert.Equal(t, item.expectConditionStatus, cond.Status)
 			}
 		}
 		assert.Equal(t, int32(1), result.Status.NumberCaptured)
-		if item.expectCompleted {
+		if item.expectConditionStatus == metav1.ConditionTrue {
 			assert.Equal(t, "sftp://127.0.0.1:22/aaa/pc1.pcapng", result.Status.FilePath)
 		}
 
