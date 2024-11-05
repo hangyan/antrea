@@ -454,7 +454,7 @@ func (c *Controller) startPacketCapture(name string) error {
 		timeout = time.Duration(*pc.Spec.Timeout) * time.Second
 	}
 	go func() error {
-		err = c.performCapture(pc, pcState, *device, srcIP, dstIp, timeout, packetCapturer)
+		captureErr := c.performCapture(pc, pcState, *device, srcIP, dstIp, timeout, packetCapturer)
 		func() {
 			c.cond.L.Lock()
 			defer c.cond.L.Unlock()
@@ -463,11 +463,11 @@ func (c *Controller) startPacketCapture(name string) error {
 			c.cond.Signal()
 		}()
 
-		updateErr := c.updatePacketCaptureStatus(name, pcState.capturedPacketsNum, "", err)
+		updateErr := c.updatePacketCaptureStatus(name, pcState.capturedPacketsNum, "", captureErr)
 		if updateErr != nil {
 			klog.ErrorS(updateErr, "Failed to update PacketCapture status")
 		}
-		return err
+		return captureErr
 	}()
 	return nil
 }
@@ -516,16 +516,18 @@ func (c *Controller) performCapture(
 				// if reach the target. flush the file and upload it.
 				if reachTarget {
 					path := os.Getenv("POD_NAME") + ":" + nameToPath(pc.Name)
+					statusPath := path
 					if err = captureState.pcapngWriter.Flush(); err != nil {
 						return err
 					}
 					if pc.Spec.FileServer != nil {
 						err = c.uploadPackets(pc, captureState.pcapngFile)
 						klog.V(4).InfoS("Upload captured packets", "name", pc.Name, "path", path)
+						statusPath = fmt.Sprintf("%s/%s.pcapng", pc.Spec.FileServer.URL, pc.Name)
 
 					}
 					// update capture result.
-					if updateErr := c.updatePacketCaptureStatus(pc.Name, captureState.capturedPacketsNum, path, err); updateErr != nil {
+					if updateErr := c.updatePacketCaptureStatus(pc.Name, captureState.capturedPacketsNum, statusPath, err); updateErr != nil {
 						klog.ErrorS(err, "Failed to update PacketCapture status")
 					}
 					if err != nil {
@@ -699,6 +701,7 @@ func (c *Controller) updatePacketCaptureStatus(name string, num int32, path stri
 	}
 
 	if err != nil {
+		updatedStatus.FilePath = ""
 		if isCaptureCompleted(toUpdate, num) {
 			updatedStatus.Conditions = []crdv1alpha1.PacketCaptureCondition{
 				{

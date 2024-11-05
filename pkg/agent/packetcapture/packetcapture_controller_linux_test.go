@@ -35,7 +35,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
@@ -52,12 +51,11 @@ var (
 	pod1IPv4 = "192.168.10.10"
 	pod2IPv4 = "192.168.11.10"
 
-	ipv6         = "2001:db8::68"
-	service1IPv4 = "10.96.0.10"
-	pod1MAC, _   = net.ParseMAC("aa:bb:cc:dd:ee:0f")
-	pod2MAC, _   = net.ParseMAC("aa:bb:cc:dd:ee:00")
-	ofPortPod1   = uint32(1)
-	ofPortPod2   = uint32(2)
+	ipv6       = "2001:db8::68"
+	pod1MAC, _ = net.ParseMAC("aa:bb:cc:dd:ee:0f")
+	pod2MAC, _ = net.ParseMAC("aa:bb:cc:dd:ee:00")
+	ofPortPod1 = uint32(1)
+	ofPortPod2 = uint32(2)
 
 	icmpProto = intstr.FromString("ICMP")
 
@@ -94,16 +92,6 @@ var (
 		Data: map[string][]byte{
 			"username": []byte("username"),
 			"password": []byte("password"),
-		},
-	}
-
-	service1 = v1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "service-1",
-			Namespace: "default",
-		},
-		Spec: v1.ServiceSpec{
-			ClusterIP: service1IPv4,
 		},
 	}
 )
@@ -206,7 +194,6 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 		&pod1,
 		&pod2,
 		&pod3,
-		&service1,
 		&secret1,
 	}
 	objs = append(objs, generateTestSecret())
@@ -264,7 +251,7 @@ func addPodInterface(ifaceStore interfacestore.InterfaceStore, podNamespace, pod
 
 // TestPacketCaptureControllerRun was used to validate the whole run process is working. It doesn't wait for
 // the testing pc to finish. on sandbox env, no good solution to open raw socket.
-func TestPacketCaptureControllerRun(t *testing.T) {
+func TestStartPacketCapture(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
 	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
@@ -296,20 +283,22 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				Packet: &crdv1alpha1.Packet{
 					Protocol: &icmpProto,
 				},
+				FileServer: &crdv1alpha1.PacketCaptureFileServer{
+					URL: "sftp://127.0.0.1:22/aaa",
+				},
 			},
 		},
 	}
 
 	pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
+	pcc.sftpUploader = &testUploader{fileName: "pc1.pcapng", url: "sftp://127.0.0.1:22/aaa"}
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	pcc.crdInformerFactory.Start(stopCh)
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 	pcc.informerFactory.Start(stopCh)
 	pcc.informerFactory.WaitForCacheSync(stopCh)
-	// check the captures that are waiting in line.
-	go pcc.processWaitingCaptures()
-	go wait.Until(pcc.worker, time.Second, stopCh)
+	pcc.startPacketCapture(pc.pc.Name)
 	time.Sleep(300 * time.Millisecond)
 
 	result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), pc.pc.Name, metav1.GetOptions{})
@@ -318,11 +307,14 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	// expected to capture 1 packet
 	for _, cond := range result.Status.Conditions {
 		if cond.Type == crdv1alpha1.PacketCaptureCompleted {
-			assert.Equal(t, cond.Status, metav1.ConditionTrue)
+			assert.Equal(t, metav1.ConditionTrue, cond.Status)
+		}
+		if cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
+			assert.Equal(t, metav1.ConditionTrue, cond.Status)
 		}
 	}
 	assert.Equal(t, int32(1), result.Status.NumberCaptured)
-	assert.Equal(t, "antrea-agent:/tmp/antrea/packetcapture/packets/pc1.pcapng", result.Status.FilePath)
+	assert.Equal(t, "sftp://127.0.0.1:22/aaa/pc1.pcapng", result.Status.FilePath)
 }
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
