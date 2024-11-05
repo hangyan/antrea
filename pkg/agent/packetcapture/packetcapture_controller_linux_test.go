@@ -567,6 +567,7 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 			require.NoError(t, err)
 			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), item.name, metav1.GetOptions{})
 			require.NoError(t, err)
+			t.Log(result.Status)
 			assert.Equal(t, true, packetCaptureStatusEqual(*item.expectedStatus, result.Status))
 		})
 	}
