@@ -120,7 +120,7 @@ func generateTestSecret() *v1.Secret {
 
 func genTestCR(name string) *crdv1alpha1.PacketCapture {
 	result := &crdv1alpha1.PacketCapture{
-		ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(fmt.Sprintf("uid-", name))},
+		ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(fmt.Sprintf("uid-%s", name))},
 		Spec: crdv1alpha1.PacketCaptureSpec{
 			Source: crdv1alpha1.Source{
 				Pod: &crdv1alpha1.PodReference{
