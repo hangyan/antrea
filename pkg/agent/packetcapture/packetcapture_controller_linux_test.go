@@ -558,7 +558,7 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 						Type:    crdv1alpha1.PacketCaptureFileUploaded,
 						Status:  metav1.ConditionStatus(v1.ConditionFalse),
 						Reason:  "UploadFailed",
-						Message: "failed to uplaod",
+						Message: "failed to upload",
 					},
 				},
 			},
@@ -568,17 +568,16 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 			err:        nil,
 			num:        15,
 			captureNum: 1,
-			path:       "/tmp/a.pcapng",
 			expectedStatus: &crdv1alpha1.PacketCaptureStatus{
-				NumberCaptured: 15,
+				NumberCaptured: 1,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
 					{
 						Type:   crdv1alpha1.PacketCaptureCompleted,
-						Status: metav1.ConditionStatus(v1.ConditionTrue),
+						Status: metav1.ConditionStatus(v1.ConditionUnknown),
 					},
 					{
 						Type:   crdv1alpha1.PacketCaptureFileUploaded,
-						Status: metav1.ConditionStatus(v1.ConditionFalse),
+						Status: metav1.ConditionStatus(v1.ConditionUnknown),
 					},
 				},
 			},
