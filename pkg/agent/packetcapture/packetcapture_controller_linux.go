@@ -516,16 +516,18 @@ func (c *Controller) performCapture(
 				// if reach the target. flush the file and upload it.
 				if reachTarget {
 					path := os.Getenv("POD_NAME") + ":" + nameToPath(pc.Name)
+					statusPath := path
 					if err = captureState.pcapngWriter.Flush(); err != nil {
 						return err
 					}
 					if pc.Spec.FileServer != nil {
 						err = c.uploadPackets(pc, captureState.pcapngFile)
 						klog.V(4).InfoS("Upload captured packets", "name", pc.Name, "path", path)
+						statusPath = fmt.Sprintf("%s/%s.pcapng", pc.Spec.FileServer.URL, pc.Name)
 
 					}
 					// update capture result.
-					if updateErr := c.updatePacketCaptureStatus(pc.Name, captureState.capturedPacketsNum, path, err); updateErr != nil {
+					if updateErr := c.updatePacketCaptureStatus(pc.Name, captureState.capturedPacketsNum, statusPath, err); updateErr != nil {
 						klog.ErrorS(err, "Failed to update PacketCapture status")
 					}
 					if err != nil {
@@ -699,6 +701,7 @@ func (c *Controller) updatePacketCaptureStatus(name string, num int32, path stri
 	}
 
 	if err != nil {
+		updatedStatus.FilePath = ""
 		if isCaptureCompleted(toUpdate, num) {
 			updatedStatus.Conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
