@@ -307,7 +307,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			name:                  "invalid proto",
 			expectConditionStatus: metav1.ConditionFalse,
 			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
+				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
 						Pod: &crdv1alpha1.PodReference{
