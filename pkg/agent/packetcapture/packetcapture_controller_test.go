@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -149,7 +150,7 @@ type testUploader struct {
 	fileName string
 }
 
-func (uploader *testUploader) Upload(url string, fileName string, config *ssh.ClientConfig, outputFile afero.File) error {
+func (uploader *testUploader) Upload(url string, fileName string, config *ssh.ClientConfig, outputFile io.Reader) error {
 	if url != uploader.url {
 		return fmt.Errorf("expected url: %s for uploader, got: %s", uploader.url, url)
 	}
@@ -319,9 +320,10 @@ func TestStartPacketCapture(t *testing.T) {
 			fileName := item.pc.Name + ".pcapng"
 			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa"}
 		})
-		fakeDevice := "lo"
-		pcc.startPacketCapture(context.TODO, item.pc, &fakeDevice)
-		time.Sleep(300 * time.Millisecond)
+		// fakeDevice := "lo"
+		// pcc.startPacketCapture(context.Background(), item.pc, &fakeDevice)
+		go pcc.Run(stopCh)
+		time.Sleep(500 * time.Millisecond)
 		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
 		assert.Nil(t, nil)
 		for _, cond := range result.Status.Conditions {
@@ -466,18 +468,17 @@ func TestMergeConditions(t *testing.T) {
 func TestUpdatePacketCaptureStatus(t *testing.T) {
 	tt := []struct {
 		name           string
-		num            int32
-		captureNum     int32
-		path           string
-		err            error
+		state          *packetCaptureState
 		expectedStatus *crdv1alpha1.PacketCaptureStatus
 	}{
 		{
-			name:       "upload-error",
-			err:        errors.New("failed to upload"),
-			num:        15,
-			captureNum: 15,
-			path:       "/tmp/a.pcapng",
+			name: "upload-error",
+			state: &packetCaptureState{
+				capturedPacketsNum:       15,
+				targetCapturedPacketsNum: 15,
+				filePath:                 "/tmp/a.pcapng",
+				err:                      errors.New("failed to upload"),
+			},
 			expectedStatus: &crdv1alpha1.PacketCaptureStatus{
 				NumberCaptured: 15,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
@@ -496,10 +497,11 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 			},
 		},
 		{
-			name:       "running",
-			err:        nil,
-			num:        15,
-			captureNum: 1,
+			name: "running",
+			state: &packetCaptureState{
+				capturedPacketsNum:       1,
+				targetCapturedPacketsNum: 15,
+			},
 			expectedStatus: &crdv1alpha1.PacketCaptureStatus{
 				NumberCaptured: 1,
 				Conditions: []crdv1alpha1.PacketCaptureCondition{
@@ -514,7 +516,7 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 
 	objs := []runtime.Object{}
 	for _, item := range tt {
-		objs = append(objs, genTestCR(item.name, item.num))
+		objs = append(objs, genTestCR(item.name, item.state.targetCapturedPacketsNum))
 	}
 
 	pcc := newFakePacketCaptureController(t, nil, objs)
@@ -527,7 +529,7 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 
 	for _, item := range tt {
 		t.Run(item.name, func(t *testing.T) {
-			err := pcc.updatePacketCaptureStatus(item.name, item.captureNum, item.path, item.err)
+			err := pcc.updateStatus(item.name, item.state)
 			require.NoError(t, err)
 			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), item.name, metav1.GetOptions{})
 			require.NoError(t, err)
