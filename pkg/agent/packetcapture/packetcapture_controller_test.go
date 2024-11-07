@@ -265,6 +265,10 @@ func addPodInterface(ifaceStore interfacestore.InterfaceStore, podNamespace, pod
 func TestPacketCaptureControllerRun(t *testing.T) {
 	// create test os
 	defaultFS = afero.NewMemMapFs()
+	defer func() {
+		defaultFS = afero.NewOsFs()
+	}()
+
 	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
 	pcs := []struct {
 		name                  string
@@ -415,6 +419,10 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 
 func TestPacketCaptureUploadPackets(t *testing.T) {
 	defaultFS = afero.NewMemMapFs()
+	defer func() {
+		defaultFS = afero.NewOsFs()
+
+	}()
 	pcs := []struct {
 		name        string
 		pc          *crdv1alpha1.PacketCapture
