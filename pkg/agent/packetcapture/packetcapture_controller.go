@@ -655,13 +655,17 @@ func (c *Controller) updatePacketCaptureStatus(name string, num int32, path stri
 
 	if err != nil {
 		updatedStatus.FilePath = ""
-		if isCaptureCompleted(toUpdate, num) {
+		if isCaptureCompleted(toUpdate, num) || err.Error() == captureTimeoutReason {
+			reason := "Succeed"
+			if err.Error() == captureTimeoutReason {
+				reason = captureTimeoutReason
+			}
 			updatedStatus.Conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
 					Type:               crdv1alpha1.PacketCaptureCompleted,
 					Status:             metav1.ConditionStatus(v1.ConditionTrue),
 					LastTransitionTime: t,
-					Reason:             "Succeed",
+					Reason:             reason,
 				},
 			}
 		} else {
@@ -675,7 +679,7 @@ func (c *Controller) updatePacketCaptureStatus(name string, num int32, path stri
 				},
 			}
 		}
-		if toUpdate.Spec.FileServer != nil {
+		if toUpdate.Spec.FileServer != nil && path != "" {
 			updatedStatus.Conditions = append(updatedStatus.Conditions, crdv1alpha1.PacketCaptureCondition{
 				Type:               crdv1alpha1.PacketCaptureFileUploaded,
 				Status:             metav1.ConditionStatus(v1.ConditionFalse),
