@@ -47,7 +47,8 @@ type ProtocolType string
 
 const (
 	sftpProtocol ProtocolType = "sftp"
-
+)
+const (
 	controllerName = "SupportBundleCollectionController"
 )
 
