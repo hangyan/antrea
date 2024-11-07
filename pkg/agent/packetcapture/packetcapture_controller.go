@@ -442,10 +442,12 @@ func (c *Controller) performCapture(
 	for {
 		select {
 		case packet := <-packets:
+			c.lock.Lock()
 			if captureState.isCaptureSucceed() {
 				return nil
 			}
 			captureState.capturedPacketsNum++
+			c.lock.Unlock()
 			ci := gopacket.CaptureInfo{
 				Timestamp:     time.Now(),
 				CaptureLength: len(packet.Data()),
@@ -458,14 +460,17 @@ func (c *Controller) performCapture(
 			klog.V(5).InfoS("Capture packets", "name", captureState.name, "count",
 				captureState.capturedPacketsNum, "len", ci.Length)
 
+			c.lock.Lock()
+			reachTarget := captureState.isCaptureSucceed()
+			c.lock.Unlock()
 			// use rate limiter to reduce the times we need to update status.
-			if captureState.isCaptureSucceed() || captureState.updateRateLimiter.Allow() {
+			if reachTarget || captureState.updateRateLimiter.Allow() {
 				pc, err := c.packetCaptureLister.Get(captureState.name)
 				if err != nil {
 					return fmt.Errorf("get PacketCapture failed: %w", err)
 				}
 				// if reach the target. flush the file and upload it.
-				if captureState.isCaptureSucceed() {
+				if reachTarget {
 					path := env.GetPodName() + ":" + nameToPath(pc.Name)
 					statusPath := path
 					if err = captureState.pcapngWriter.Flush(); err != nil {
