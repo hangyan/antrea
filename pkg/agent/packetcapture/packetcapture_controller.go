@@ -482,7 +482,9 @@ func (c *Controller) performCapture(
 						klog.V(4).InfoS("Upload captured packets", "name", pc.Name, "path", path)
 						statusPath = fmt.Sprintf("%s/%s.pcapng", pc.Spec.FileServer.URL, pc.Name)
 					}
+					c.lock.Lock()
 					captureState.filePath = statusPath
+					c.lock.Unlock()
 					if err != nil {
 						return err
 					}
