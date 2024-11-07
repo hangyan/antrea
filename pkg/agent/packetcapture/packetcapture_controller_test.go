@@ -320,9 +320,10 @@ func TestStartPacketCapture(t *testing.T) {
 			fileName := item.pc.Name + ".pcapng"
 			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa"}
 		})
-		fakeDevice := "lo"
-		pcc.startPacketCapture(context.Background(), item.pc, &fakeDevice)
-		time.Sleep(300 * time.Millisecond)
+		// fakeDevice := "lo"
+		// pcc.startPacketCapture(context.Background(), item.pc, &fakeDevice)
+		go pcc.Run(stopCh)
+		time.Sleep(500 * time.Millisecond)
 		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
 		assert.Nil(t, nil)
 		for _, cond := range result.Status.Conditions {
