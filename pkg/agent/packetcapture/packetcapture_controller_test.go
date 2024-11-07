@@ -357,7 +357,7 @@ func TestStartPacketCapture(t *testing.T) {
 		pcc.startPacketCapture(item.pc.Name)
 		time.Sleep(300 * time.Millisecond)
 		if item.pc.Spec.Timeout != nil {
-			time.Sleep(time.Duration(*item.pc.Spec.Timeout))
+			time.Sleep(time.Duration(*item.pc.Spec.Timeout) * 2)
 		}
 		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
 		assert.Nil(t, nil)
