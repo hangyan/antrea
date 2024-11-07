@@ -33,17 +33,19 @@ the target traffic flow:
 * Transport protocol (TCP/UDP/ICMP)
 * Transport ports
 
-You can start a new packet capture by creating a `PacketCapture` CR. An optional `fileServer` field can be specified to
-store the generated packets file. Before that, a Secret named `antrea-packetcapture-fileserver-auth`
-located in the same Namespace where Antrea is deployed must exist and carry the authentication information for the target file server.
+You can start a new packet capture by creating a `PacketCapture` CR. An optional `fileServer`
+field can be specified to store the generated packets file. Before that,
+a Secret named `antrea-packetcapture-fileserver-auth` located in the same Namespace where
+Antrea is deployed must exist and carry the authentication information for the target file server.
 You can also create the Secret using the following `kubectl` command:
 
 ```bash
 kubectl create secret generic antrea-packetcapture-fileserver-auth -n kube-system --from-literal=username='<username>' --from-literal=password='<password>'
 ```
 
-If no `fileServer` field is present in the CR, the captured packets file will be saved in the antrea-agent Pod (the one on the same Node with the source or destination Pod in the CR).
-The default file path will be `/tmp/antrea/packetcapture/packets/<PacketCapture_CR_Name>.pcapng`.
+If no `fileServer` field is present in the CR, the captured packets file will be saved in the
+antrea-agent Pod (the one on the same Node with the source or destination Pod in the CR). The result
+path information will be available in `.status.FilePath`.
 
 And here is an example of `PacketCapture` CR:
 
@@ -70,7 +72,7 @@ spec:
       name: backend
   packet:
     ipFamily: IPv4
-    protocol: TCP # Numerical format is also supported. eg. TCP (6), UDP (17), ICMP (1).
+    protocol: TCP # support arbitrary number values and string values in [TCP,UDP,ICMP]
     transportHeader:
       tcp:
         dstPort: 8080 # Destination port needs to be set when the protocol is TCP/UDP.
@@ -79,7 +81,7 @@ spec:
 The CR above starts a new packet capture of TCP flows from a Pod named `frontend`
 to the port 8080 of a Pod named `backend` using TCP protocol. It will capture the first 5 packets
 that meet this criterion and upload them to the specified sftp server. Users can download the
-packet file from the sftp server (or from the local antrea-agent Pod) and analyze its content with network diagnose tools
-like Wireshark or tcpdump.
+packet file from the sftp server (or from the local antrea-agent Pod) and analyze its content
+with network diagnose tools like Wireshark or tcpdump.
 
 Note: This feature is not supported on Windows for now.

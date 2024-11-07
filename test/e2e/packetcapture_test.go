@@ -45,9 +45,9 @@ var (
 	udpServerPodName = "udp-server"
 	nonExistPodName  = "non-existing-pod"
 
-	tcpProto  = intstr.FromInt32(6)
-	icmpProto = intstr.FromInt32(1)
-	udpProto  = intstr.FromInt32(17)
+	tcpProto  = intstr.FromString("TCP")
+	icmpProto = intstr.FromString("ICMP")
+	udpProto  = intstr.FromString("UDP")
 
 	testServerPort   int32 = 80
 	testNonExistPort int32 = 8085
@@ -585,7 +585,7 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 			}
 		}
 		time.Sleep(time.Second * 2)
-		protocol := tc.pc.Spec.Packet.Protocol.IntVal
+		protocol := *tc.pc.Spec.Packet.Protocol
 		server := dstPodIPs.IPv4.String()
 		if tc.ipVersion == 6 {
 			server = dstPodIPs.IPv6.String()
@@ -597,18 +597,18 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 			t.Fatalf("Error: Waiting PacketCapture to Running failed: %v", err)
 		}
 		// Send an ICMP echo packet from the source Pod to the destination.
-		if protocol == protocolICMP || protocol == protocolICMPv6 {
+		if protocol == icmpProto {
 			if err := data.RunPingCommandFromTestPod(PodInfo{srcPod, getOSString(), "", data.testNamespace},
 				data.testNamespace, dstPodIPs, toolboxContainerName, 10, 0, false); err != nil {
-				t.Logf("Ping(%d) '%s' -> '%v' failed: ERROR (%v)", protocol, srcPod, *dstPodIPs, err)
+				t.Logf("Ping(%s) '%s' -> '%v' failed: ERROR (%v)", protocol.StrVal, srcPod, *dstPodIPs, err)
 			}
-		} else if protocol == protocolTCP {
+		} else if protocol == tcpProto {
 			for i := 1; i <= 10; i++ {
 				if err := data.runNetcatCommandFromTestPodWithProtocol(tc.srcPod, data.testNamespace, toolboxContainerName, server, serverPodPort, "tcp"); err != nil {
 					t.Logf("Netcat(TCP) '%s' -> '%v' failed: ERROR (%v)", srcPod, server, err)
 				}
 			}
-		} else if protocol == protocolUDP {
+		} else if protocol == udpProto {
 			for i := 1; i <= 10; i++ {
 				if err := data.runNetcatCommandFromTestPodWithProtocol(tc.srcPod, data.testNamespace, toolboxContainerName, server, serverPodPort, "udp"); err != nil {
 					t.Logf("Netcat(UDP) '%s' -> '%v' failed: ERROR (%v)", srcPod, server, err)

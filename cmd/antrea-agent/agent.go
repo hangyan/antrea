@@ -654,12 +654,15 @@ func run(o *Options) error {
 
 	var packetCaptureController *packetcapture.Controller
 	if features.DefaultFeatureGate.Enabled(features.PacketCapture) {
-		packetCaptureController = packetcapture.NewPacketCaptureController(
+		packetCaptureController, err = packetcapture.NewPacketCaptureController(
 			k8sClient,
 			crdClient,
 			packetCaptureInformer,
 			ifaceStore,
 		)
+		if err != nil {
+			return fmt.Errorf("error when creating PacketCapture controller: %v", err)
+		}
 	}
 
 	if err := antreaClientProvider.RunOnce(); err != nil {

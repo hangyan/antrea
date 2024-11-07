@@ -12,17 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package packetcapture
+package capture
 
 import (
-	"context"
-	"net"
-
-	"github.com/gopacket/gopacket"
-
-	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
+	"errors"
 )
 
-type PacketCapturer interface {
-	Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error)
+func NewPcapCapture() (PacketCapturer, error) {
+	return nil, errors.New("PacketCapture is not implemented on Windows")
 }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package packetcapture
+package capture
 
 import (
 	"context"
@@ -21,10 +21,9 @@ import (
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
 	"github.com/gopacket/gopacket/pcapgo"
-	netBpf "golang.org/x/net/bpf"
-	klog "k8s.io/klog/v2"
+	"golang.org/x/net/bpf"
+	"k8s.io/klog/v2"
 
-	"antrea.io/antrea/pkg/agent/packetcapture/bpf"
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
@@ -33,35 +32,34 @@ const (
 	maxSnapshotBytes = 65536
 )
 
-type PcapCapture struct {
-	*pcapgo.EthernetHandle
+type pcapCapture struct {
 }
 
-func NewPcapCapture(device string) (PacketCapturer, error) {
+func NewPcapCapture() (PacketCapturer, error) {
+	return &pcapCapture{}, nil
+}
+
+func (p *pcapCapture) Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error) {
 	eth, err := pcapgo.NewEthernetHandle(device)
 	if err != nil {
 		return nil, err
 	}
-	ps := PcapCapture{eth}
-	return &ps, nil
-}
 
-func (p *PcapCapture) Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error) {
-	p.SetPromiscuous(false)
-	p.SetCaptureLength(maxSnapshotBytes)
+	eth.SetPromiscuous(false)
+	eth.SetCaptureLength(maxSnapshotBytes)
 
-	inst := bpf.CompilePacketFilter(packet, srcIP, dstIP)
+	inst := compilePacketFilter(packet, srcIP, dstIP)
 	klog.V(5).InfoS("Generated bpf instructions for Packetcapture", "device", device, "srcIP", srcIP, "dstIP", dstIP, "packetSpec", packet, "bpf instructions", inst)
-	rawInst, err := netBpf.Assemble(inst)
+	rawInst, err := bpf.Assemble(inst)
 	if err != nil {
 		return nil, err
 	}
-	err = p.SetBPF(rawInst)
+	err = eth.SetBPF(rawInst)
 	if err != nil {
 		return nil, err
 	}
 
-	packetSource := gopacket.NewPacketSource(p, layers.LinkTypeEthernet)
+	packetSource := gopacket.NewPacketSource(eth, layers.LinkTypeEthernet)
 	packetSource.NoCopy = true
 	return packetSource.PacketsCtx(ctx), nil
 

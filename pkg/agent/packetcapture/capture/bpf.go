@@ -12,24 +12,69 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package bpf
+package capture
 
 import (
 	"encoding/binary"
 	"net"
-	"strings"
 
-	"github.com/emanic/gaia/protocols"
 	"golang.org/x/net/bpf"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
-// CompilePacketFilter compile the CRD spec to bpf instructions. For now, we only focus on
+const (
+	lengthByte    int    = 1
+	lengthHalf    int    = 2
+	lengthWord    int    = 4
+	bitsPerWord   int    = 32
+	etherTypeIPv4 uint32 = 0x0800
+
+	jumpMask           uint32 = 0x1fff
+	ip4SourcePort      uint32 = 14
+	ip4DestinationPort uint32 = 16
+	ip4HeaderSize      uint32 = 14
+	ip4HeaderFlags     uint32 = 20
+)
+
+var (
+	returnDrop                 = bpf.RetConstant{Val: 0}
+	returnKeep                 = bpf.RetConstant{Val: 0x40000}
+	loadIPv4SourcePort         = bpf.LoadIndirect{Off: ip4SourcePort, Size: lengthHalf}
+	loadIPv4DestinationPort    = bpf.LoadIndirect{Off: ip4DestinationPort, Size: lengthHalf}
+	loadEtherKind              = bpf.LoadAbsolute{Off: 12, Size: lengthHalf}
+	loadIPv4SourceAddress      = bpf.LoadAbsolute{Off: 26, Size: lengthWord}
+	loadIPv4DestinationAddress = bpf.LoadAbsolute{Off: 30, Size: lengthWord}
+	loadIPv4Protocol           = bpf.LoadAbsolute{Off: 23, Size: lengthByte}
+)
+
+var ProtocolMap = map[string]uint32{
+	"UDP":  17,
+	"TCP":  6,
+	"ICMP": 1,
+}
+
+func loadIPv4HeaderOffset(skipTrue uint8) []bpf.Instruction {
+	return []bpf.Instruction{
+		bpf.LoadAbsolute{Off: ip4HeaderFlags, Size: lengthHalf},              // flags+fragment offset, since we need to calc where the src/dst port is
+		bpf.JumpIf{Cond: bpf.JumpBitsSet, Val: jumpMask, SkipTrue: skipTrue}, // check if there is a L4 header
+		bpf.LoadMemShift{Off: ip4HeaderSize},                                 // calculate the size of IP header
+	}
+}
+
+func compareProtocolIP4(skipTrue, skipFalse uint8) bpf.Instruction {
+	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: etherTypeIPv4, SkipTrue: skipTrue, SkipFalse: skipFalse}
+}
+
+func compareProtocol(protocol uint32, skipTrue, skipFalse uint8) bpf.Instruction {
+	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: protocol, SkipTrue: skipTrue, SkipFalse: skipFalse}
+}
+
+// compilePacketFilter compile the CRD spec to bpf instructions. For now, we only focus on
 // ipv4 traffic. Compare to the raw BPF filter supported by libpcap, we only need to support
 // limited user cases, so an expression parser is not needed.
-func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, srcIP, dstIP net.IP) []bpf.Instruction {
+func compilePacketFilter(packetSpec *crdv1alpha1.Packet, srcIP, dstIP net.IP) []bpf.Instruction {
 	size := uint8(calInstructionsSize(packetSpec))
 
 	// ipv4 check
@@ -47,8 +92,9 @@ func CompilePacketFilter(packetSpec *crdv1alpha1.Packet, srcIP, dstIP net.IP) []
 			if packetSpec.Protocol.Type == intstr.Int {
 				proto = uint32(packetSpec.Protocol.IntVal)
 			} else {
-				proto = uint32(protocols.L4ProtocolNumberFromName(strings.ToUpper(packetSpec.Protocol.StrVal)))
+				proto = ProtocolMap[packetSpec.Protocol.StrVal]
 			}
+
 			inst = append(inst, loadIPv4Protocol)
 			inst = append(inst, compareProtocol(proto, 0, size-5))
 		}

@@ -12,24 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package bpf
+package capture
 
-const (
-	lengthByte    int    = 1
-	lengthHalf    int    = 2
-	lengthWord    int    = 4
-	bitsPerWord   int    = 32
-	etherTypeIPv4 uint32 = 0x0800
+import (
+	"context"
+	"net"
 
-	jumpMask           uint32 = 0x1fff
-	ipProtocolTCP      uint32 = 0x06
-	ipProtocolUDP      uint32 = 0x11
-	ipProtocolICMP     uint32 = 0x1
-	ipProtocolSctp     uint32 = 0x84
-	ip6SourcePort      uint32 = 54
-	ip6DestinationPort uint32 = 56
-	ip4SourcePort      uint32 = 14
-	ip4DestinationPort uint32 = 16
-	ip4HeaderSize      uint32 = 14
-	ip4HeaderFlags     uint32 = 20
+	"github.com/gopacket/gopacket"
+
+	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
+
+type PacketCapturer interface {
+	Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error)
+}

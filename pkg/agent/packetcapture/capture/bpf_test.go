@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package bpf
+package capture
 
 import (
 	"net"
@@ -26,9 +26,8 @@ import (
 )
 
 var (
-	testTCPProtocol       = intstr.FromInt(6)
-	testUDPProtocol       = intstr.FromInt(17)
-	testUDPProtoStr       = intstr.FromString("UDP")
+	testTCPProtocol       = intstr.FromString("TCP")
+	testUDPProtocol       = intstr.FromString("UDP")
 	testSrcPort     int32 = 80
 	testDstPort     int32 = 80
 )
@@ -146,7 +145,7 @@ func TestPacketCaptureCompileBPF(t *testing.T) {
 			dstIP: net.ParseIP("127.0.0.2"),
 			spec: &crdv1alpha1.PacketCaptureSpec{
 				Packet: &crdv1alpha1.Packet{
-					Protocol: &testUDPProtoStr,
+					Protocol: &testUDPProtocol,
 					TransportHeader: crdv1alpha1.TransportHeader{
 						UDP: &crdv1alpha1.UDPHeader{
 							SrcPort: &testSrcPort,
@@ -178,7 +177,7 @@ func TestPacketCaptureCompileBPF(t *testing.T) {
 
 	for _, item := range tt {
 		t.Run(item.name, func(t *testing.T) {
-			result := CompilePacketFilter(item.spec.Packet, item.srcIP, item.dstIP)
+			result := compilePacketFilter(item.spec.Packet, item.srcIP, item.dstIP)
 			assert.Equal(t, item.inst, result)
 		})
 	}

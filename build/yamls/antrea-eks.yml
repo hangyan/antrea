@@ -4557,14 +4557,6 @@ rules:
   - apiGroups:
       - ""
     resources:
-      - secrets
-    resourceNames:
-      - antrea-packetcapture-fileserver-auth
-    verbs:
-      - get
-  - apiGroups:
-      - ""
-    resources:
       - endpoints
       - services
       - namespaces
@@ -4778,6 +4770,7 @@ rules:
       - secrets
     resourceNames:
       - antrea-bgp-passwords
+      - antrea-packetcapture-fileserver-auth
     verbs:
       - get
       - list

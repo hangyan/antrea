@@ -16,6 +16,7 @@ package supportbundlecollection
 
 import (
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -36,11 +37,7 @@ import (
 	"antrea.io/antrea/pkg/ovs/ovsctl"
 	"antrea.io/antrea/pkg/querier"
 	"antrea.io/antrea/pkg/support"
-<<<<<<< HEAD
 	"antrea.io/antrea/pkg/util/sftp"
-=======
-	"antrea.io/antrea/pkg/util/ftp"
->>>>>>> 913472879 (Add packetcatpure feature)
 )
 
 type fakeController struct {
@@ -73,11 +70,7 @@ func TestSupportBundleCollectionAdd(t *testing.T) {
 		supportBundleCollection *cpv1b2.SupportBundleCollection
 		expectedCompleted       bool
 		agentDumper             *mockAgentDumper
-<<<<<<< HEAD
 		uploader                sftp.Uploader
-=======
-		uploader                ftp.Uploader
->>>>>>> 913472879 (Add packetcatpure feature)
 	}{
 		{
 			name:                    "Add SupportBundleCollection",
