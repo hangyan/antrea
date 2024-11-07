@@ -15,18 +15,15 @@
 package packetcapture
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
-	"github.com/gopacket/gopacket/pcapgo"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -164,63 +161,46 @@ func (uploader *testUploader) Upload(url string, fileName string, config *ssh.Cl
 	return nil
 }
 
+func craftTestPacket() gopacket.Packet {
+	// Create a properly formed packet, just with
+	// empty details. Should fill out MAC addresses,
+	// IP addresses, etc.
+	buffer := gopacket.NewSerializeBuffer()
+	options := gopacket.SerializeOptions{}
+	rawBytes := []byte{10, 20, 30}
+	gopacket.SerializeLayers(buffer, options,
+		&layers.Ethernet{
+			SrcMAC: net.HardwareAddr{0xFF, 0xAA, 0xFA, 0xAA, 0xFF, 0xAA},
+			DstMAC: net.HardwareAddr{0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD},
+		},
+		&layers.IPv4{
+			SrcIP: net.IP{127, 0, 0, 1},
+			DstIP: net.IP{8, 8, 8, 8},
+		},
+		&layers.TCP{
+			SrcPort: layers.TCPPort(4321),
+			DstPort: layers.TCPPort(80),
+		},
+		gopacket.Payload(rawBytes),
+	)
+	return gopacket.NewPacket(buffer.Bytes(), layers.LayerTypeEthernet, gopacket.NoCopy)
+
+}
+
 type testCapture struct {
 }
 
 func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error) {
-	// create test os
-	defaultFS = afero.NewMemMapFs()
-	// create test pcap file
-	f, _, err := getPacketFileAndWriter("test-pcap-data")
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	// simulate packet file
-	data := []byte{0xab, 0xcd, 0xef, 0x01, 0x02, 0x03, 0x04}
-	ci := gopacket.CaptureInfo{
-		Timestamp:     time.Unix(12345667, 1234567000),
-		Length:        700,
-		CaptureLength: len(data),
-	}
-	err = func() error {
-		w := pcapgo.NewWriter(f)
-		if err := w.WriteFileHeader(65536, layers.LinkTypeEthernet); err != nil {
-			return err
-		}
-
-		if err := w.WritePacket(ci, data); err != nil {
-			return err
-		}
-		return nil
-	}()
-	if err != nil {
-		return nil, err
-	}
-	if _, err := f.Seek(0, 0); err != nil {
-		return nil, fmt.Errorf("failed to upload to file server while setting offset: %v", err)
-	}
-	buf, err := io.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	fileReader := bytes.NewReader(buf)
-
-	// empty reader for test udp
-	if packet.Protocol != nil {
-		if packet.Protocol.StrVal == "UDP" {
-			fileReader = bytes.NewReader(nil)
+	ch := make(chan gopacket.Packet, 15)
+	var pkt gopacket.Packet
+	for {
+		select {
+		case ch <- pkt:
+			continue
+		case <-ctx.Done():
+			return nil, errors.New("time out")
 		}
 	}
-
-	r, err := pcapgo.NewReader(fileReader)
-	if err != nil {
-		return nil, err
-	}
-
-	source := gopacket.NewPacketSource(r, layers.LayerTypeEthernet)
-	return source.Packets(), nil
 }
 
 type fakePacketCaptureController struct {
