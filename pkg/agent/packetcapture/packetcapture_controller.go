@@ -444,6 +444,7 @@ func (c *Controller) performCapture(
 		case packet := <-packets:
 			c.lock.Lock()
 			if captureState.isCaptureSucceed() {
+				c.lock.Unlock()
 				return nil
 			}
 			captureState.capturedPacketsNum++
