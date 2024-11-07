@@ -57,7 +57,8 @@ var (
 	ofPortPod1 = uint32(1)
 	ofPortPod2 = uint32(2)
 
-	icmpProto = intstr.FromString("ICMP")
+	icmpProto    = intstr.FromString("ICMP")
+	invalidProto = intstr.FromString("INVALID")
 
 	pod1 = v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -271,7 +272,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		expectConditionStatus metav1.ConditionStatus
 	}{
 		{
-			name:                  "start packetcapture",
+			Name:                  "start packetcapture",
 			expectConditionStatus: metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
@@ -302,6 +303,38 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:                  "invalid proto",
+			expectConditionStatus: metav1.ConditionTrue,
+			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
+				Spec: crdv1alpha1.PacketCaptureSpec{
+					Source: crdv1alpha1.Source{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
+					},
+					Destination: crdv1alpha1.Destination{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
+					},
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 10,
+						},
+					},
+					Packet: &crdv1alpha1.Packet{
+						Protocol: &invalidProto,
+					},
+					FileServer: &crdv1alpha1.PacketCaptureFileServer{
+						URL: "sftp://127.0.0.1:22/aaa",
+					},
+				},
+			},
+		},
 	}
 
 	objs := []runtime.Object{}
@@ -320,8 +353,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			fileName := item.pc.Name + ".pcapng"
 			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa"}
 		})
-		// fakeDevice := "lo"
-		// pcc.startPacketCapture(context.Background(), item.pc, &fakeDevice)
+
 		go pcc.Run(stopCh)
 		time.Sleep(500 * time.Millisecond)
 		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
@@ -343,6 +375,8 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		// delete cr
 		err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
 		require.NoError(t, err)
+
+		stopCh <- struct{}{}
 	}
 
 }
