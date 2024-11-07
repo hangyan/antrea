@@ -595,6 +595,7 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 		FilePath:       state.filePath,
 	}
 	t := metav1.Now()
+	c.lock.Lock()
 	if state.err != nil {
 		updatedStatus.FilePath = ""
 		conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
@@ -666,6 +667,7 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 		}
 
 	}
+	c.lock.Unlock()
 	updatedStatus.Conditions = conditions
 
 	if retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
