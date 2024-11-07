@@ -291,7 +291,7 @@ func TestStartPacketCapture(t *testing.T) {
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							Number: 1,
+							Number: 10,
 						},
 					},
 					Packet: &crdv1alpha1.Packet{
