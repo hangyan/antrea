@@ -124,7 +124,7 @@ type packetCaptureState struct {
 }
 
 func (pcs *packetCaptureState) isCaptureSucceed() bool {
-	return pcs.capturedPacketsNum == pcs.targetCapturedPacketsNum
+	return pcs.capturedPacketsNum == pcs.targetCapturedPacketsNum && pcs.targetCapturedPacketsNum > 0
 }
 
 type Controller struct {
