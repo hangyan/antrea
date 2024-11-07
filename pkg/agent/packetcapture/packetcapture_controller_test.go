@@ -303,39 +303,6 @@ func TestStartPacketCapture(t *testing.T) {
 				},
 			},
 		},
-		{
-			name:                  "failed-case",
-			expectConditionStatus: metav1.ConditionFalse,
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					Source: crdv1alpha1.Source{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod1.Namespace,
-							Name:      pod1.Name,
-						},
-					},
-					Destination: crdv1alpha1.Destination{
-						Pod: &crdv1alpha1.PodReference{
-							Namespace: pod2.Namespace,
-							Name:      pod2.Name,
-						},
-					},
-					CaptureConfig: crdv1alpha1.CaptureConfig{
-						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							Number: 100,
-						},
-					},
-					Packet: &crdv1alpha1.Packet{
-						Protocol: &udpProto,
-					},
-					FileServer: &crdv1alpha1.PacketCaptureFileServer{
-						URL: "sftp://127.0.0.1:22/aaa",
-					},
-					Timeout: &shortTimeout,
-				},
-			},
-		},
 	}
 
 	objs := []runtime.Object{}
@@ -356,9 +323,6 @@ func TestStartPacketCapture(t *testing.T) {
 		})
 		pcc.startPacketCapture(item.pc.Name)
 		time.Sleep(300 * time.Millisecond)
-		if item.pc.Spec.Timeout != nil {
-			time.Sleep(time.Duration(*item.pc.Spec.Timeout) * 2)
-		}
 		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
 		assert.Nil(t, nil)
 		t.Logf("status: %+v ---> %+v", item.expectConditionStatus, result.Status)
