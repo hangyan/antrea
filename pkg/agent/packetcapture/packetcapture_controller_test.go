@@ -272,7 +272,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		expectConditionStatus metav1.ConditionStatus
 	}{
 		{
-			Name:                  "start packetcapture",
+			name:                  "start packetcapture",
 			expectConditionStatus: metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
