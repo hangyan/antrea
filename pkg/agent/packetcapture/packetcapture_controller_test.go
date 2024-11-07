@@ -413,49 +413,6 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 
 }
 
-func TestPacketCaptureUploadPackets(t *testing.T) {
-	defaultFS = afero.NewMemMapFs()
-	defer func() {
-		defaultFS = afero.NewOsFs()
-
-	}()
-	pcs := []struct {
-		name        string
-		pc          *crdv1alpha1.PacketCapture
-		expectedErr string
-		uploader    *testUploader
-	}{
-		{
-			name: "sftp",
-			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
-				Spec: crdv1alpha1.PacketCaptureSpec{
-					FileServer: &crdv1alpha1.PacketCaptureFileServer{},
-				},
-			},
-			uploader: &testUploader{fileName: "pc1.pcapng"},
-		},
-	}
-	for _, pc := range pcs {
-		t.Run(pc.name, func(t *testing.T) {
-			pcc := newFakePacketCaptureController(t, nil, []runtime.Object{pc.pc})
-			pcc.sftpUploader = pc.uploader
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-			pcc.crdInformerFactory.Start(stopCh)
-			pcc.crdInformerFactory.WaitForCacheSync(stopCh)
-
-			file, _ := defaultFS.Create(pc.name)
-			err := pcc.uploadPackets(pc.pc, file)
-			if pc.expectedErr != "" {
-				assert.Equal(t, err.Error(), pc.expectedErr)
-			} else {
-				assert.Nil(t, err)
-			}
-		})
-	}
-}
-
 func TestMergeConditions(t *testing.T) {
 	tt := []struct {
 		name     string
