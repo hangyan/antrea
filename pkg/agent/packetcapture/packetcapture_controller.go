@@ -123,10 +123,6 @@ type packetCaptureState struct {
 	cancel   context.CancelFunc
 }
 
-func (pcs *packetCaptureState) isCaptureSucceed() bool {
-	return pcs.capturedPacketsNum == pcs.targetCapturedPacketsNum && pcs.targetCapturedPacketsNum > 0
-}
-
 type Controller struct {
 	kubeClient            clientset.Interface
 	crdClient             clientsetversioned.Interface
@@ -231,6 +227,12 @@ func (c *Controller) deletePacketCapture(obj interface{}) {
 
 func nameToPath(name string) string {
 	return filepath.Join(packetDirectory, name+".pcapng")
+}
+
+func (c *Controller) isCaptureSucceed(pcs *packetCaptureState) bool {
+	c.lock.Lock()
+	defer c.lock.Lock()
+	return pcs.capturedPacketsNum == pcs.targetCapturedPacketsNum && pcs.targetCapturedPacketsNum > 0
 }
 
 func (c *Controller) worker() {
@@ -442,10 +444,10 @@ func (c *Controller) performCapture(
 	for {
 		select {
 		case packet := <-packets:
-			c.lock.Lock()
-			if captureState.isCaptureSucceed() {
+			if c.isCaptureSucceed(captureState) {
 				return nil
 			}
+			c.lock.Lock()
 			captureState.capturedPacketsNum++
 			c.lock.Unlock()
 			ci := gopacket.CaptureInfo{
@@ -459,10 +461,7 @@ func (c *Controller) performCapture(
 			}
 			klog.V(5).InfoS("Capture packets", "name", captureState.name, "count",
 				captureState.capturedPacketsNum, "len", ci.Length)
-
-			c.lock.Lock()
-			reachTarget := captureState.isCaptureSucceed()
-			c.lock.Unlock()
+			reachTarget := c.isCaptureSucceed(captureState)
 			// use rate limiter to reduce the times we need to update status.
 			if reachTarget || captureState.updateRateLimiter.Allow() {
 				pc, err := c.packetCaptureLister.Get(captureState.name)
@@ -600,7 +599,6 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 		FilePath:       state.filePath,
 	}
 	t := metav1.Now()
-	c.lock.Lock()
 	if state.err != nil {
 		updatedStatus.FilePath = ""
 		conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
@@ -620,7 +618,7 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 					Message:            captureTimeoutReason,
 				},
 			}
-		} else if state.isCaptureSucceed() {
+		} else if c.isCaptureSucceed(state) {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
 					Type:               crdv1alpha1.PacketCaptureCompleted,
@@ -640,7 +638,7 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 			})
 		}
 	} else {
-		if state.isCaptureSucceed() {
+		if c.isCaptureSucceed(state) {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
 					Type:               crdv1alpha1.PacketCaptureCompleted,
@@ -672,7 +670,6 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 		}
 
 	}
-	c.lock.Unlock()
 	updatedStatus.Conditions = conditions
 
 	if retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
