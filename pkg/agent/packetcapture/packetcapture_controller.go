@@ -16,6 +16,7 @@ package packetcapture
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net"
@@ -29,6 +30,7 @@ import (
 	"github.com/gopacket/gopacket/layers"
 	"github.com/gopacket/gopacket/pcapgo"
 	"github.com/spf13/afero"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -50,8 +52,9 @@ import (
 	clientsetversioned "antrea.io/antrea/pkg/client/clientset/versioned"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions/crd/v1alpha1"
 	crdlisters "antrea.io/antrea/pkg/client/listers/crd/v1alpha1"
+	"antrea.io/antrea/pkg/util/auth"
 	"antrea.io/antrea/pkg/util/env"
-	"antrea.io/antrea/pkg/util/ftp"
+	"antrea.io/antrea/pkg/util/sftp"
 )
 
 type storageProtocolType string
@@ -116,12 +119,14 @@ type packetCaptureState struct {
 	phase packetCapturePhase
 	// filePath is the final path shown in PacketCapture's status.
 	filePath string
-	err      error
-	cancel   context.CancelFunc
+	// err is the latest error observed in the capture.
+	err error
+	// cancel is the cancel function for capture context.
+	cancel context.CancelFunc
 }
 
 func (pcs *packetCaptureState) isCaptureSucceed() bool {
-	return pcs.capturedPacketsNum == pcs.targetCapturedPacketsNum
+	return pcs.capturedPacketsNum == pcs.targetCapturedPacketsNum && pcs.targetCapturedPacketsNum > 0
 }
 
 type Controller struct {
@@ -132,7 +137,7 @@ type Controller struct {
 	packetCaptureSynced   cache.InformerSynced
 	interfaceStore        interfacestore.InterfaceStore
 	queue                 workqueue.TypedRateLimitingInterface[string]
-	sftpUploader          ftp.Uploader
+	sftpUploader          sftp.Uploader
 	captureInterface      PacketCapturer
 	lock                  sync.Mutex
 	// A name-phase mapping for all PacketCapture CRs.
@@ -157,7 +162,7 @@ func NewPacketCaptureController(
 			workqueue.NewTypedItemExponentialFailureRateLimiter[string](minRetryDelay, maxRetryDelay),
 			workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 		),
-		sftpUploader: &ftp.SftpUploader{},
+		sftpUploader: sftp.NewUploader(),
 		captures:     make(map[string]*packetCaptureState),
 	}
 
@@ -253,12 +258,14 @@ func (c *Controller) processPacketCaptureItem() bool {
 func (c *Controller) syncPacketCapture(pcName string) error {
 	cleanupStatus := func() {
 		c.lock.Lock()
+		defer c.lock.Unlock()
 		state := c.captures[pcName]
-		if state.cancel != nil {
-			state.cancel()
+		if state != nil {
+			if state.cancel != nil {
+				state.cancel()
+			}
+			delete(c.captures, pcName)
 		}
-		delete(c.captures, pcName)
-		c.lock.Unlock()
 	}
 
 	pc, err := c.packetCaptureLister.Get(pcName)
@@ -276,7 +283,7 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 
 	if err := c.validatePacketCapture(&pc.Spec); err != nil {
 		klog.ErrorS(err, "Invalid PacketCapture", "name", pc.Name)
-		if err := c.updateStatus(pc.Name, &packetCaptureState{err: err}); err != nil {
+		if updateErr := c.updateStatus(pc.Name, &packetCaptureState{err: err}); updateErr != nil {
 			klog.ErrorS(err, "Failed to update PacketCapture status", "name", pc.Name)
 		}
 		cleanupStatus()
@@ -305,11 +312,11 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 				timeout = time.Duration(*pc.Spec.Timeout) * time.Second
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			state.cancel = cancel
 			if err = c.startPacketCapture(ctx, pc, device); err != nil {
 				phase = packetCapturePhaseCompleted
 			} else {
 				phase = packetCapturePhaseRunning
-				state.cancel = cancel
 			}
 		}
 		state.phase = phase
@@ -437,10 +444,13 @@ func (c *Controller) performCapture(
 	for {
 		select {
 		case packet := <-packets:
+			c.lock.Lock()
 			if captureState.isCaptureSucceed() {
+				c.lock.Unlock()
 				return nil
 			}
 			captureState.capturedPacketsNum++
+			c.lock.Unlock()
 			ci := gopacket.CaptureInfo{
 				Timestamp:     time.Now(),
 				CaptureLength: len(packet.Data()),
@@ -453,14 +463,17 @@ func (c *Controller) performCapture(
 			klog.V(5).InfoS("Capture packets", "name", captureState.name, "count",
 				captureState.capturedPacketsNum, "len", ci.Length)
 
+			c.lock.Lock()
+			reachTarget := captureState.isCaptureSucceed()
+			c.lock.Unlock()
 			// use rate limiter to reduce the times we need to update status.
-			if captureState.isCaptureSucceed() || captureState.updateRateLimiter.Allow() {
+			if reachTarget || captureState.updateRateLimiter.Allow() {
 				pc, err := c.packetCaptureLister.Get(captureState.name)
 				if err != nil {
 					return fmt.Errorf("get PacketCapture failed: %w", err)
 				}
 				// if reach the target. flush the file and upload it.
-				if captureState.isCaptureSucceed() {
+				if reachTarget {
 					path := env.GetPodName() + ":" + nameToPath(pc.Name)
 					statusPath := path
 					if err = captureState.pcapngWriter.Flush(); err != nil {
@@ -471,7 +484,9 @@ func (c *Controller) performCapture(
 						klog.V(4).InfoS("Upload captured packets", "name", pc.Name, "path", path)
 						statusPath = fmt.Sprintf("%s/%s.pcapng", pc.Spec.FileServer.URL, pc.Name)
 					}
+					c.lock.Lock()
 					captureState.filePath = statusPath
+					c.lock.Unlock()
 					if err != nil {
 						return err
 					}
@@ -488,7 +503,7 @@ func (c *Controller) performCapture(
 				return fmt.Errorf("get PacketCapture failed: %w", err)
 			}
 			klog.InfoS("PacketCapture timeout", "name", pc.Name)
-			return err
+			return errors.New(captureTimeoutReason)
 		}
 	}
 }
@@ -536,7 +551,7 @@ func (c *Controller) parseIPs(pc *crdv1alpha1.PacketCapture) (srcIP, dstIP net.I
 	return
 }
 
-func (c *Controller) getUploaderByProtocol(protocol storageProtocolType) (ftp.Uploader, error) {
+func (c *Controller) getUploaderByProtocol(protocol storageProtocolType) (sftp.Uploader, error) {
 	if protocol == sftpProtocol {
 		return c.sftpUploader, nil
 	}
@@ -553,16 +568,28 @@ func (c *Controller) uploadPackets(pc *crdv1alpha1.PacketCapture, outputFile afe
 	if err != nil {
 		return fmt.Errorf("failed to upload packets while getting uploader: %w", err)
 	}
+	if _, err := outputFile.Seek(0, 0); err != nil {
+		return fmt.Errorf("failed to upload to the file server while setting offset: %v", err)
+	}
 	authSecret := v1.SecretReference{
 		Name:      fileServerAuthSecretName,
 		Namespace: env.GetAntreaNamespace(),
 	}
-	serverAuth, err := ftp.ParseFileServerAuth(ftp.BasicAuthentication, &authSecret, c.kubeClient)
+	serverAuth, err := auth.GetAuthConfigurationFromSecret(context.TODO(), auth.BasicAuthenticationType, &authSecret, c.kubeClient)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get authentication for the file server", "name", pc.Name, "authSecret", authSecret)
 		return err
 	}
-	cfg := ftp.GenSSHClientConfig(serverAuth.BasicAuthentication.Username, serverAuth.BasicAuthentication.Password)
+	if serverAuth.BasicAuthentication == nil {
+		return fmt.Errorf("failed to get basic authentication info for the file server")
+	}
+	cfg := &ssh.ClientConfig{
+		User: serverAuth.BasicAuthentication.Username,
+		Auth: []ssh.AuthMethod{ssh.Password(serverAuth.BasicAuthentication.Password)},
+		// #nosec G106: skip host key check here and users can specify their own checks if needed
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         time.Second,
+	}
 	return uploader.Upload(pc.Spec.FileServer.URL, c.generatePacketsPathForServer(pc.Name), cfg, outputFile)
 }
 
@@ -578,6 +605,7 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 		FilePath:       state.filePath,
 	}
 	t := metav1.Now()
+	c.lock.Lock()
 	if state.err != nil {
 		updatedStatus.FilePath = ""
 		conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
@@ -616,7 +644,6 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 				Message:            state.err.Error(),
 			})
 		}
-
 	} else {
 		if state.isCaptureSucceed() {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
@@ -650,6 +677,8 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 		}
 
 	}
+	c.lock.Unlock()
+	updatedStatus.Conditions = conditions
 
 	if retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if toUpdate.Status.FilePath != "" {
@@ -678,7 +707,6 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 		return retryErr
 	}
 	klog.V(2).InfoS("Updated PacketCapture", "name", name)
-
 	return nil
 }
 
