@@ -162,9 +162,6 @@ func (uploader *testUploader) Upload(url string, fileName string, config *ssh.Cl
 }
 
 func craftTestPacket() gopacket.Packet {
-	// Create a properly formed packet, just with
-	// empty details. Should fill out MAC addresses,
-	// IP addresses, etc.
 	buffer := gopacket.NewSerializeBuffer()
 	options := gopacket.SerializeOptions{}
 	rawBytes := []byte{10, 20, 30}
@@ -184,7 +181,6 @@ func craftTestPacket() gopacket.Packet {
 		gopacket.Payload(rawBytes),
 	)
 	return gopacket.NewPacket(buffer.Bytes(), layers.LayerTypeEthernet, gopacket.NoCopy)
-
 }
 
 type testCapture struct {
@@ -369,6 +365,7 @@ func TestStartPacketCapture(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
 		assert.Nil(t, nil)
+		t.Logf("status: %+v ---> %+v", item.expectConditionStatus, result.Status)
 		for _, cond := range result.Status.Conditions {
 			if cond.Type == crdv1alpha1.PacketCaptureCompleted {
 				assert.Equal(t, item.expectConditionStatus, cond.Status)
