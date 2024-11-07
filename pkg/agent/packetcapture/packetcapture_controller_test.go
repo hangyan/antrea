@@ -188,16 +188,9 @@ type testCapture struct {
 
 func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error) {
 	ch := make(chan gopacket.Packet, 15)
-	go func() {
-		for {
-			select {
-			case ch <- craftTestPacket():
-				continue
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	for i := 0; i < 15; i++ {
+		ch <- craftTestPacket()
+	}
 	return ch, nil
 }
 
@@ -330,7 +323,7 @@ func TestStartPacketCapture(t *testing.T) {
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							Number: 5,
+							Number: 100,
 						},
 					},
 					Packet: &crdv1alpha1.Packet{
