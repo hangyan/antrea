@@ -192,15 +192,17 @@ type testCapture struct {
 
 func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error) {
 	ch := make(chan gopacket.Packet, 15)
-	var pkt gopacket.Packet
-	for {
-		select {
-		case ch <- pkt:
-			continue
-		case <-ctx.Done():
-			return nil, errors.New("time out")
+	go func() {
+		for {
+			select {
+			case ch <- craftTestPacket():
+				continue
+			case <-ctx.Done():
+				return
+			}
 		}
-	}
+	}()
+	return ch, nil
 }
 
 type fakePacketCaptureController struct {
