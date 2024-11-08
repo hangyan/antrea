@@ -77,6 +77,7 @@ const (
 
 	// reason for timeout
 	captureTimeoutReason   = "PacketCapture timeout"
+	contextTimeoutErrMsg   = "context deadline exceeded"
 	defaultTimeoutDuration = 60 * time.Second
 
 	captureStatusUpdatePeriod = 10 * time.Second
@@ -275,14 +276,14 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 
 	// Capture will not occur on this Node if a corresponding Pod interface is not found.
 	device := c.getTargetCaptureDevice(pc)
-	if device == nil {
+	if device == "" {
 		klog.V(4).InfoS("Skipping process PacketCapture", "name", pcName)
 		return nil
 	}
 
 	if err := c.validatePacketCapture(&pc.Spec); err != nil {
 		klog.ErrorS(err, "Invalid PacketCapture", "name", pc.Name)
-		if updateErr := c.updateStatus(pc.Name, &packetCaptureState{err: err}); updateErr != nil {
+		if updateErr := c.updateStatus(context.Background(), pcName, &packetCaptureState{err: err}); updateErr != nil {
 			klog.ErrorS(err, "Failed to update PacketCapture status", "name", pc.Name)
 		}
 		cleanupStatus()
@@ -325,7 +326,7 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 		return state
 	}()
 
-	if updateErr := c.updateStatus(pcName, state); updateErr != nil {
+	if updateErr := c.updateStatus(context.Background(), pcName, state); updateErr != nil {
 		return fmt.Errorf("error when patching status: %w", updateErr)
 	}
 	return err
@@ -378,7 +379,7 @@ func getPacketFileAndWriter(name string) (afero.File, *pcapgo.NgWriter, error) {
 // Pod does not exist on the current Node, the agent on this Node will not perform the capture.
 // In the PacketCapture spec, at least one of `.Spec.Source.Pod` or `.Spec.Destination.Pod`
 // should be set.
-func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) *string {
+func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) string {
 	var pod, ns string
 	if pc.Spec.Source.Pod != nil {
 		pod = pc.Spec.Source.Pod.Name
@@ -390,13 +391,13 @@ func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) *stri
 
 	podInterfaces := c.interfaceStore.GetContainerInterfacesByPod(pod, ns)
 	if len(podInterfaces) == 0 {
-		return nil
+		return ""
 	}
 
-	return &podInterfaces[0].InterfaceName
+	return podInterfaces[0].InterfaceName
 }
 
-func (c *Controller) startPacketCapture(ctx context.Context, pc *crdv1alpha1.PacketCapture, device *string) error {
+func (c *Controller) startPacketCapture(ctx context.Context, pc *crdv1alpha1.PacketCapture, device string) error {
 	klog.V(4).InfoS("Started processing PacketCapture", "name", pc.Name)
 	pcState := c.captures[pc.Name]
 	pcState.name = pc.Name
@@ -404,7 +405,7 @@ func (c *Controller) startPacketCapture(ctx context.Context, pc *crdv1alpha1.Pac
 	if err != nil {
 		return err
 	}
-	klog.V(2).InfoS("Prepare capture on the current Node", "name", pc.Name, "device", *device)
+	klog.V(2).InfoS("Prepare capture on the current Node", "name", pc.Name, "device", device)
 	pcState.targetCapturedPacketsNum = pc.Spec.CaptureConfig.FirstN.Number
 	file, writer, err := getPacketFileAndWriter(pc.Name)
 	if err != nil {
@@ -414,14 +415,17 @@ func (c *Controller) startPacketCapture(ctx context.Context, pc *crdv1alpha1.Pac
 	pcState.pcapngWriter = writer
 	pcState.updateRateLimiter = rate.NewLimiter(rate.Every(captureStatusUpdatePeriod), 1)
 	go func() {
-		captureErr := c.performCapture(ctx, pc, pcState, *device, srcIP, dstIp)
+		captureErr := c.performCapture(ctx, pc, pcState, device, srcIP, dstIp)
 		func() {
 			c.mutex.Lock()
 			defer c.mutex.Unlock()
 			c.numRunningCaptures -= 1
 			state := c.captures[pc.Name]
-			state.phase = packetCapturePhaseCompleted
-			state.err = captureErr
+			if state != nil {
+				state.phase = packetCapturePhaseCompleted
+				state.err = captureErr
+			}
+
 		}()
 		c.enqueuePacketCapture(pc)
 	}()
@@ -491,7 +495,7 @@ func (c *Controller) performCapture(
 					}
 				}
 				// report capture status.
-				c.addPacketCapture(pc)
+				c.enqueuePacketCapture(pc)
 			}
 		case <-ctx.Done():
 			return ctx.Err()
@@ -584,19 +588,19 @@ func (c *Controller) uploadPackets(pc *crdv1alpha1.PacketCapture, outputFile afe
 	return uploader.Upload(pc.Spec.FileServer.URL, c.generatePacketsPathForServer(pc.Name), cfg, outputFile)
 }
 
-func (c *Controller) updateStatus(name string, state *packetCaptureState) error {
+func (c *Controller) updateStatus(ctx context.Context, name string, state *packetCaptureState) error {
 	toUpdate, getErr := c.packetCaptureLister.Get(name)
 	if getErr != nil {
 		klog.InfoS("Didn't find the original PacketCapture, skip updating status", "name", name)
 		return nil
 	}
 	conditions := []crdv1alpha1.PacketCaptureCondition{}
+	t := metav1.Now()
+	c.mutex.Lock()
 	updatedStatus := crdv1alpha1.PacketCaptureStatus{
 		NumberCaptured: state.capturedPacketsNum,
 		FilePath:       state.filePath,
 	}
-	t := metav1.Now()
-	c.mutex.Lock()
 	if state.err != nil {
 		updatedStatus.FilePath = ""
 		conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
@@ -606,14 +610,14 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 			Reason:             "CaptureFailed",
 			Message:            state.err.Error(),
 		})
-		if state.err.Error() == captureTimeoutReason {
+		if state.err.Error() == contextTimeoutErrMsg {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
 					Type:               crdv1alpha1.PacketCaptureCompleted,
 					Status:             metav1.ConditionStatus(v1.ConditionTrue),
 					LastTransitionTime: t,
 					Reason:             "Timeout",
-					Message:            captureTimeoutReason,
+					Message:            state.err.Error(),
 				},
 			}
 		} else if state.isCaptureSuccessful() {

@@ -556,7 +556,7 @@ func TestUpdatePacketCaptureStatus(t *testing.T) {
 
 	for _, item := range tt {
 		t.Run(item.name, func(t *testing.T) {
-			err := pcc.updateStatus(item.name, item.state)
+			err := pcc.updateStatus(context.Background(), name, item.state)
 			require.NoError(t, err)
 			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), item.name, metav1.GetOptions{})
 			require.NoError(t, err)
