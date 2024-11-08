@@ -299,7 +299,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							Number: 10,
+							Number: 15,
 						},
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -378,7 +378,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		}
 
 		if item.expectConditionStatus == metav1.ConditionTrue {
-			assert.Equal(t, int32(10), result.Status.NumberCaptured)
+			assert.Equal(t, int32(15), result.Status.NumberCaptured)
 			assert.Equal(t, "sftp://127.0.0.1:22/aaa/pc1.pcapng", result.Status.FilePath)
 		}
 
