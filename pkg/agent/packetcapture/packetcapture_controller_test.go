@@ -51,6 +51,7 @@ import (
 var (
 	pod1IPv4 = "192.168.10.10"
 	pod2IPv4 = "192.168.11.10"
+	pod3IPv4 = "192.168.12.10"
 
 	ipv6                     = "2001:db8::68"
 	pod1MAC, _               = net.ParseMAC("aa:bb:cc:dd:ee:0f")
@@ -86,6 +87,13 @@ var (
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "pod-3",
 			Namespace: "default",
+		},
+		Status: v1.PodStatus{
+			PodIPs: []v1.PodIP{
+				{
+					IP: pod3IPv4,
+				},
+			},
 		},
 	}
 
@@ -137,11 +145,18 @@ func genTestCR(name string, num int32) *crdv1alpha1.PacketCapture {
 type testUploader struct {
 	url      string
 	fileName string
+	// for concurrent cases, no need to check
+	checkFileName bool
 }
 
 func (uploader *testUploader) Upload(url string, fileName string, config *ssh.ClientConfig, outputFile io.Reader) error {
 	if url != uploader.url {
 		return fmt.Errorf("expected url: %s for uploader, got: %s", uploader.url, url)
+	}
+	if uploader.checkFileName {
+		if fileName != uploader.fileName {
+			return fmt.Errorf("expected filename: %s, got: %s ", uploader.fileName, fileName)
+		}
 	}
 	return nil
 }
@@ -202,26 +217,30 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 	addPodInterface(ifaceStore, pod2.Namespace, pod2.Name, []string{pod2IPv4}, pod2MAC.String(), int32(ofPortPod2))
 
 	// NewPacketCaptureController dont work on windows
-	pcController := &Controller{
-		kubeClient:            kubeClient,
-		crdClient:             crdClient,
-		packetCaptureInformer: packetCaptureInformer,
-		packetCaptureLister:   packetCaptureInformer.Lister(),
-		packetCaptureSynced:   packetCaptureInformer.Informer().HasSynced,
-		interfaceStore:        ifaceStore,
-		sftpUploader:          &testUploader{},
-		captureInterface:      &testCapture{},
-		captures:              make(map[string]*packetCaptureState),
+	pcController, err := NewPacketCaptureController(kubeClient, crdClient, packetCaptureInformer, ifaceStore)
+	if err != nil {
+		pcController = &Controller{
+			kubeClient:            kubeClient,
+			crdClient:             crdClient,
+			packetCaptureInformer: packetCaptureInformer,
+			packetCaptureLister:   packetCaptureInformer.Lister(),
+			packetCaptureSynced:   packetCaptureInformer.Informer().HasSynced,
+			interfaceStore:        ifaceStore,
+			captures:              make(map[string]*packetCaptureState),
+		}
+		packetCaptureInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+			AddFunc:    pcController.addPacketCapture,
+			UpdateFunc: pcController.updatePacketCapture,
+			DeleteFunc: pcController.deletePacketCapture,
+		}, resyncPeriod)
 	}
+
+	pcController.sftpUploader = &testUploader{}
+	pcController.captureInterface = &testCapture{}
 	pcController.queue = workqueue.NewTypedRateLimitingQueueWithConfig(
 		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Millisecond*50, time.Millisecond*200),
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 	)
-	packetCaptureInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc:    pcController.addPacketCapture,
-		UpdateFunc: pcController.updatePacketCapture,
-		DeleteFunc: pcController.deletePacketCapture,
-	}, resyncPeriod)
 
 	t.Setenv("POD_NAME", "antrea-agent")
 	t.Setenv("POD_NAMESPACE", "kube-system")
@@ -311,13 +330,15 @@ func TestMultiplePacketCaptures(t *testing.T) {
 // the testing pc to finish. on sandbox env, no good solution to open raw socket.
 func TestPacketCaptureControllerRun(t *testing.T) {
 	pcs := []struct {
-		name                  string
-		pc                    *crdv1alpha1.PacketCapture
-		expectConditionStatus metav1.ConditionStatus
+		name                 string
+		pc                   *crdv1alpha1.PacketCapture
+		expectCompleteStatus metav1.ConditionStatus
+		expectUploadStatus   metav1.ConditionStatus
 	}{
 		{
-			name:                  "start packetcapture",
-			expectConditionStatus: metav1.ConditionTrue,
+			name:                 "start packetcapture",
+			expectCompleteStatus: metav1.ConditionTrue,
+			expectUploadStatus:   metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -349,10 +370,45 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			},
 		},
 		{
-			name:                  "invalid proto",
-			expectConditionStatus: metav1.ConditionFalse,
+			name:                 "parse ip",
+			expectCompleteStatus: metav1.ConditionTrue,
+			expectUploadStatus:   metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
+				Spec: crdv1alpha1.PacketCaptureSpec{
+					Source: crdv1alpha1.Source{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
+					},
+					Destination: crdv1alpha1.Destination{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod3.Namespace,
+							Name:      pod3.Name,
+						},
+					},
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 15,
+						},
+					},
+					Packet: &crdv1alpha1.Packet{
+						Protocol: &icmpProto,
+					},
+					FileServer: &crdv1alpha1.PacketCaptureFileServer{
+						URL: "sftp://127.0.0.1:22/aaa",
+					},
+					Timeout: &testCaptureTimeout,
+				},
+			},
+		},
+		{
+			name:                 "invalid proto",
+			expectCompleteStatus: metav1.ConditionFalse,
+			expectUploadStatus:   metav1.ConditionFalse,
+			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc4", UID: "uid4"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
 						Pod: &crdv1alpha1.PodReference{
@@ -382,8 +438,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			},
 		},
 		{
-			name:                  "timeout-case",
-			expectConditionStatus: metav1.ConditionTrue,
+			name:                 "timeout case",
+			expectCompleteStatus: metav1.ConditionTrue,
+			expectUploadStatus:   metav1.ConditionFalse,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc3", UID: "uid3"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -414,6 +471,40 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:                 "upload failed",
+			expectCompleteStatus: metav1.ConditionTrue,
+			expectUploadStatus:   metav1.ConditionFalse,
+			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc5", UID: "uid5"},
+				Spec: crdv1alpha1.PacketCaptureSpec{
+					Source: crdv1alpha1.Source{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
+					},
+					Destination: crdv1alpha1.Destination{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
+					},
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 15,
+						},
+					},
+					Packet: &crdv1alpha1.Packet{
+						Protocol: &icmpProto,
+					},
+					FileServer: &crdv1alpha1.PacketCaptureFileServer{
+						URL: "sftp://127.0.0.1:22/aaa-invalid",
+					},
+					Timeout: &testCaptureTimeout,
+				},
+			},
+		},
 	}
 
 	objs := []runtime.Object{}
@@ -421,43 +512,42 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		objs = append(objs, pc.pc)
 	}
 	pcc := newFakePacketCaptureController(t, nil, objs)
+	pcc.sftpUploader = &testUploader{url: "sftp://127.0.0.1:22/aaa"}
 	stopCh := make(chan struct{})
 	defer close(stopCh)
+	defer defaultFS.Remove(packetDirectory)
 	pcc.crdInformerFactory.Start(stopCh)
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 	pcc.informerFactory.Start(stopCh)
 	pcc.informerFactory.WaitForCacheSync(stopCh)
+	go pcc.Run(stopCh)
 	for _, item := range pcs {
 		t.Run(item.name, func(t *testing.T) {
-			fileName := item.pc.Name + ".pcapng"
-			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa"}
-		})
-		go pcc.Run(stopCh)
-		assert.Eventually(t, func() bool {
-			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
-
-			if err != nil {
-				return false
-			}
-			for _, cond := range result.Status.Conditions {
-				if cond.Type == crdv1alpha1.PacketCaptureComplete || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
-					assert.Equal(t, item.expectConditionStatus, cond.Status)
-					if item.expectConditionStatus != cond.Status {
+			assert.Eventually(t, func() bool {
+				result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
+				if err != nil {
+					return false
+				}
+				for _, cond := range result.Status.Conditions {
+					if cond.Type == crdv1alpha1.PacketCaptureComplete && item.expectCompleteStatus != cond.Status {
+						return false
+					}
+					if cond.Type == crdv1alpha1.PacketCaptureFileUploaded && item.expectUploadStatus != cond.Status {
 						return false
 					}
 				}
-			}
-			if item.expectConditionStatus == metav1.ConditionTrue {
-				if result.Status.NumberCaptured != testCaptureNum {
-					return false
+				if item.expectCompleteStatus == metav1.ConditionTrue {
+					if result.Status.NumberCaptured != testCaptureNum {
+						return false
+					}
 				}
-			}
-			// delete cr
-			err = pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
-			return err == nil
+				// delete cr
+				err = pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
+				return err == nil
 
-		}, 1*time.Second, 20*time.Millisecond)
-		stopCh <- struct{}{}
+			}, 2*time.Second, 20*time.Millisecond)
+			stopCh <- struct{}{}
+		})
 	}
 }
 

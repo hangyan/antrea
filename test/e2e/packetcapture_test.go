@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
+	"antrea.io/antrea/pkg/features"
 )
 
 type pcTestCase struct {
@@ -112,13 +113,13 @@ func createUDPServerPod(name string, ns string, portNum int32, serverNode string
 // TestPacketCapture is the top-level test which contains all subtests for
 // PacketCapture related test cases, so they can share setup, teardown.
 func TestPacketCapture(t *testing.T) {
+	skipIfFeatureDisabled(t, features.PacketCapture, true, false)
+	skipIfHasWindowsNodes(t)
 	data, err := setupTest(t)
 	if err != nil {
 		t.Fatalf("Error when setting up test: %v", err)
 	}
 	defer teardownTest(t, data)
-
-	skipIfHasWindowsNodes(t)
 
 	// setup sftp server for test.
 	secretUserName := "foo"
