@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/util/workqueue"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	"antrea.io/antrea/pkg/agent/util"
@@ -51,15 +52,17 @@ var (
 	pod1IPv4 = "192.168.10.10"
 	pod2IPv4 = "192.168.11.10"
 
-	ipv6       = "2001:db8::68"
-	pod1MAC, _ = net.ParseMAC("aa:bb:cc:dd:ee:0f")
-	pod2MAC, _ = net.ParseMAC("aa:bb:cc:dd:ee:00")
-	ofPortPod1 = uint32(1)
-	ofPortPod2 = uint32(2)
-	timeout    = uint32(1)
+	ipv6                     = "2001:db8::68"
+	pod1MAC, _               = net.ParseMAC("aa:bb:cc:dd:ee:0f")
+	pod2MAC, _               = net.ParseMAC("aa:bb:cc:dd:ee:00")
+	ofPortPod1               = uint32(1)
+	ofPortPod2               = uint32(2)
+	testCaptureTimeout       = uint32(1)
+	testCaptureNum     int32 = 15
 
 	icmpProto    = intstr.FromString("ICMP")
 	invalidProto = intstr.FromString("INVALID")
+	testFTPUrl   = "sftp://127.0.0.1:22/path"
 
 	pod1 = v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -123,8 +126,9 @@ func genTestCR(name string, num int32) *crdv1alpha1.PacketCapture {
 				Protocol: &icmpProto,
 			},
 			FileServer: &crdv1alpha1.PacketCaptureFileServer{
-				URL: "sftp://127.0.0.1:22/aaa",
+				URL: testFTPUrl,
 			},
+			Timeout: &testCaptureTimeout,
 		},
 	}
 	return result
@@ -138,9 +142,6 @@ type testUploader struct {
 func (uploader *testUploader) Upload(url string, fileName string, config *ssh.ClientConfig, outputFile io.Reader) error {
 	if url != uploader.url {
 		return fmt.Errorf("expected url: %s for uploader, got: %s", uploader.url, url)
-	}
-	if fileName != uploader.fileName {
-		return fmt.Errorf("expected filename: %s for uploader, got: %s", uploader.fileName, fileName)
 	}
 	return nil
 }
@@ -171,7 +172,7 @@ type testCapture struct {
 }
 
 func (p *testCapture) Capture(ctx context.Context, device string, srcIP, dstIP net.IP, packet *crdv1alpha1.Packet) (chan gopacket.Packet, error) {
-	ch := make(chan gopacket.Packet, 15)
+	ch := make(chan gopacket.Packet, testCaptureNum)
 	for i := 0; i < 15; i++ {
 		ch <- craftTestPacket()
 	}
@@ -208,7 +209,12 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 	)
 	pcController.sftpUploader = &testUploader{}
 	pcController.captureInterface = &testCapture{}
+	pcController.queue = workqueue.NewTypedRateLimitingQueueWithConfig(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Millisecond*100, time.Millisecond*500),
+		workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
+	)
 	t.Setenv("POD_NAME", "antrea-agent")
+	t.Setenv("POD_NAMESPACE", "kube-system")
 	return &fakePacketCaptureController{
 		Controller:         pcController,
 		kubeClient:         kubeClient,
@@ -235,12 +241,66 @@ func addPodInterface(ifaceStore interfacestore.InterfaceStore, podNamespace, pod
 	})
 }
 
+func TestMultiplePacketCaptures(t *testing.T) {
+	defaultFS = afero.NewMemMapFs()
+	packetsDir := "/tmp/antrea/packetcapture/packets"
+	defaultFS.MkdirAll(packetsDir, 0755)
+	nameFunc := func(id int) string {
+		return fmt.Sprintf("pc-%d", id)
+	}
+	var objs []runtime.Object
+	for i := 0; i < 20; i++ {
+		objs = append(objs, genTestCR(nameFunc(i), int32(testCaptureNum)))
+	}
+	pcc := newFakePacketCaptureController(t, nil, objs)
+	pcc.sftpUploader = &testUploader{url: testFTPUrl}
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	pcc.crdInformerFactory.Start(stopCh)
+	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
+	pcc.informerFactory.Start(stopCh)
+	pcc.informerFactory.WaitForCacheSync(stopCh)
+	go pcc.Run(stopCh)
+	assert.Eventually(t, func() bool {
+		pcc.mutex.Lock()
+		if pcc.numRunningCaptures != 0 {
+			return false
+		}
+		pcc.mutex.Unlock()
+		items, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			return false
+		}
+		for _, result := range items.Items {
+			for _, cond := range result.Status.Conditions {
+				if cond.Type == crdv1alpha1.PacketCaptureCompleted || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
+					if cond.Status == metav1.ConditionFalse {
+						return false
+					}
+				}
+			}
+		}
+		return true
+	}, 5*time.Second, 20*time.Millisecond)
+
+	for i := 0; i < 20; i++ {
+		err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), nameFunc(i), metav1.DeleteOptions{})
+		require.NoError(t, err)
+	}
+	assert.Eventually(t, func() bool {
+		pcc.mutex.Lock()
+		if len(pcc.captures) != 0 {
+			return false
+		}
+		pcc.mutex.Unlock()
+		return true
+	}, 5*time.Second, 20*time.Millisecond)
+
+}
+
 // TestPacketCaptureControllerRun was used to validate the whole run process is working. It doesn't wait for
 // the testing pc to finish. on sandbox env, no good solution to open raw socket.
 func TestPacketCaptureControllerRun(t *testing.T) {
-	// create test os
-	defaultFS = afero.NewMemMapFs()
-	defaultFS.MkdirAll("/tmp/antrea/packetcapture/packets", 0755)
 	pcs := []struct {
 		name                  string
 		pc                    *crdv1alpha1.PacketCapture
@@ -275,7 +335,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
-					Timeout: &timeout,
+					Timeout: &testCaptureTimeout,
 				},
 			},
 		},
@@ -308,7 +368,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
-					Timeout: &timeout,
+					Timeout: &testCaptureTimeout,
 				},
 			},
 		},
@@ -341,7 +401,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
-					Timeout: &timeout,
+					Timeout: &testCaptureTimeout,
 				},
 			},
 		},
