@@ -51,6 +51,7 @@ import (
 var (
 	pod1IPv4 = "192.168.10.10"
 	pod2IPv4 = "192.168.11.10"
+	pod3IPv4 = "192.168.12.10"
 
 	ipv6                     = "2001:db8::68"
 	pod1MAC, _               = net.ParseMAC("aa:bb:cc:dd:ee:0f")
@@ -86,6 +87,13 @@ var (
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "pod-3",
 			Namespace: "default",
+		},
+		Status: v1.PodStatus{
+			PodIPs: []v1.PodIP{
+				{
+					IP: pod3IPv4,
+				},
+			},
 		},
 	}
 
@@ -137,11 +145,18 @@ func genTestCR(name string, num int32) *crdv1alpha1.PacketCapture {
 type testUploader struct {
 	url      string
 	fileName string
+	// for concurrent cases, no need to check
+	checkFileName bool
 }
 
 func (uploader *testUploader) Upload(url string, fileName string, config *ssh.ClientConfig, outputFile io.Reader) error {
 	if url != uploader.url {
 		return fmt.Errorf("expected url: %s for uploader, got: %s", uploader.url, url)
+	}
+	if uploader.checkFileName {
+		if fileName != uploader.fileName {
+			return fmt.Errorf("expected filename: %s, got: %s ", uploader.fileName, fileName)
+		}
 	}
 	return nil
 }
@@ -349,10 +364,43 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			},
 		},
 		{
+			name:                  "parse ip",
+			expectConditionStatus: metav1.ConditionTrue,
+			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
+				Spec: crdv1alpha1.PacketCaptureSpec{
+					Source: crdv1alpha1.Source{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
+					},
+					Destination: crdv1alpha1.Destination{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod3.Namespace,
+							Name:      pod3.Name,
+						},
+					},
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 15,
+						},
+					},
+					Packet: &crdv1alpha1.Packet{
+						Protocol: &icmpProto,
+					},
+					FileServer: &crdv1alpha1.PacketCaptureFileServer{
+						URL: "sftp://127.0.0.1:22/aaa",
+					},
+					Timeout: &testCaptureTimeout,
+				},
+			},
+		},
+		{
 			name:                  "invalid proto",
 			expectConditionStatus: metav1.ConditionFalse,
 			pc: &crdv1alpha1.PacketCapture{
-				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
+				ObjectMeta: metav1.ObjectMeta{Name: "pc4", UID: "uid4"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
 					Source: crdv1alpha1.Source{
 						Pod: &crdv1alpha1.PodReference{
@@ -430,7 +478,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	for _, item := range pcs {
 		t.Run(item.name, func(t *testing.T) {
 			fileName := item.pc.Name + ".pcapng"
-			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa"}
+			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa", checkFileName: true}
 		})
 		go pcc.Run(stopCh)
 		assert.Eventually(t, func() bool {
