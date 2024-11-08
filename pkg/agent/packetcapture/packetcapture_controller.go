@@ -71,7 +71,7 @@ const (
 	minRetryDelay = 5 * time.Second
 	maxRetryDelay = 60 * time.Second
 
-	defaultWorkers = 2
+	defaultWorkers = 4
 
 	// defines how many capture request we can handle concurrently. waiting captures will be
 	// marked as Pending until they can be processed.
@@ -313,7 +313,11 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 		return state
 	}()
 
-	if updateErr := c.updateStatus(context.Background(), pcName, state); updateErr != nil {
+	c.mutex.Lock()
+	newState := new(packetCaptureState)
+	*newState = *state
+	c.mutex.Unlock()
+	if updateErr := c.updateStatus(context.Background(), pcName, newState); updateErr != nil {
 		return fmt.Errorf("error when patching status: %w", updateErr)
 	}
 	return err
@@ -582,7 +586,6 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 	}
 	conditions := []crdv1alpha1.PacketCaptureCondition{}
 	t := metav1.Now()
-	c.mutex.Lock()
 	updatedStatus := crdv1alpha1.PacketCaptureStatus{
 		NumberCaptured: state.capturedPacketsNum,
 		FilePath:       state.filePath,
@@ -659,7 +662,6 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 		}
 
 	}
-	c.mutex.Unlock()
 	updatedStatus.Conditions = conditions
 
 	if retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -676,10 +678,10 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 		}
 		toUpdate.Status = updatedStatus
 		klog.V(2).InfoS("Updating PacketCapture", "name", name, "status", toUpdate.Status)
-		_, updateErr := c.crdClient.CrdV1alpha1().PacketCaptures().UpdateStatus(context.TODO(), toUpdate, metav1.UpdateOptions{})
+		_, updateErr := c.crdClient.CrdV1alpha1().PacketCaptures().UpdateStatus(ctx, toUpdate, metav1.UpdateOptions{})
 		if updateErr != nil && apierrors.IsConflict(updateErr) {
 			var getErr error
-			if toUpdate, getErr = c.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), name, metav1.GetOptions{}); getErr != nil {
+			if toUpdate, getErr = c.crdClient.CrdV1alpha1().PacketCaptures().Get(ctx, name, metav1.GetOptions{}); getErr != nil {
 				return getErr
 			}
 		}
