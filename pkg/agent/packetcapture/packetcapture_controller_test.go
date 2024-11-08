@@ -491,6 +491,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				if cond.Type == crdv1alpha1.PacketCaptureComplete || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
 					assert.Equal(t, item.expectConditionStatus, cond.Status)
 					if item.expectConditionStatus != cond.Status {
+						t.Logf("status: %+v", result.Status)
 						return false
 					}
 				}
