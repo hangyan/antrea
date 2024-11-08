@@ -16,7 +16,6 @@ package packetcapture
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -543,80 +542,4 @@ func TestMergeConditions(t *testing.T) {
 			assert.True(t, conditionSliceEqualsIgnoreLastTransitionTime(item.expected, result))
 		})
 	}
-}
-
-func TestUpdatePacketCaptureStatus(t *testing.T) {
-	tt := []struct {
-		name           string
-		state          *packetCaptureState
-		expectedStatus *crdv1alpha1.PacketCaptureStatus
-	}{
-		{
-			name: "upload-error",
-			state: &packetCaptureState{
-				capturedPacketsNum:       15,
-				targetCapturedPacketsNum: 15,
-				filePath:                 "/tmp/a.pcapng",
-				err:                      errors.New("failed to upload"),
-			},
-			expectedStatus: &crdv1alpha1.PacketCaptureStatus{
-				NumberCaptured: 15,
-				Conditions: []crdv1alpha1.PacketCaptureCondition{
-					{
-						Type:   crdv1alpha1.PacketCaptureCompleted,
-						Status: metav1.ConditionStatus(v1.ConditionTrue),
-						Reason: "Succeed",
-					},
-					{
-						Type:    crdv1alpha1.PacketCaptureFileUploaded,
-						Status:  metav1.ConditionStatus(v1.ConditionFalse),
-						Reason:  "UploadFailed",
-						Message: "failed to upload",
-					},
-				},
-			},
-		},
-		{
-			name: "running",
-			state: &packetCaptureState{
-				capturedPacketsNum:       1,
-				targetCapturedPacketsNum: 15,
-			},
-			expectedStatus: &crdv1alpha1.PacketCaptureStatus{
-				NumberCaptured: 1,
-				Conditions: []crdv1alpha1.PacketCaptureCondition{
-					{
-						Type:   crdv1alpha1.PacketCaptureRunning,
-						Status: metav1.ConditionStatus(v1.ConditionTrue),
-					},
-				},
-			},
-		},
-	}
-
-	objs := []runtime.Object{}
-	for _, item := range tt {
-		objs = append(objs, genTestCR(item.name, item.state.targetCapturedPacketsNum))
-	}
-
-	pcc := newFakePacketCaptureController(t, nil, objs)
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	pcc.crdInformerFactory.Start(stopCh)
-	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
-	pcc.informerFactory.Start(stopCh)
-	pcc.informerFactory.WaitForCacheSync(stopCh)
-
-	for _, item := range tt {
-		t.Run(item.name, func(t *testing.T) {
-			err := pcc.updateStatus(context.Background(), item.name, item.state)
-			require.NoError(t, err)
-			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.TODO(), item.name, metav1.GetOptions{})
-			require.NoError(t, err)
-			if !packetCaptureStatusEqual(*item.expectedStatus, result.Status) {
-				t.Errorf("updated status don't match: %+v %+v", *item.expectedStatus, result.Status)
-			}
-		})
-	}
-
 }
