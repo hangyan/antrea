@@ -214,6 +214,7 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 	)
 	t.Setenv("POD_NAME", "antrea-agent")
+	t.Setenv("POD_NAMESPACE", "kube-system")
 	return &fakePacketCaptureController{
 		Controller:         pcController,
 		kubeClient:         kubeClient,
