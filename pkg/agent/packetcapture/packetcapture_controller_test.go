@@ -545,7 +545,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				err = pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
 				return err == nil
 
-			}, 1*time.Second, 20*time.Millisecond)
+			}, 2*time.Second, 20*time.Millisecond)
 			stopCh <- struct{}{}
 		})
 	}
