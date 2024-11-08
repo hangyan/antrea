@@ -210,7 +210,7 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 	pcController.sftpUploader = &testUploader{}
 	pcController.captureInterface = &testCapture{}
 	pcController.queue = workqueue.NewTypedRateLimitingQueueWithConfig(
-		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Millisecond*20, time.Millisecond*100),
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Millisecond*100, time.Millisecond*500),
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 	)
 	t.Setenv("POD_NAME", "antrea-agent")
