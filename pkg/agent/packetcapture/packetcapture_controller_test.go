@@ -284,6 +284,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 					}
 				}
 			}
+			t.Logf("pc: %s, %+v", result.Name, result.Status)
 		}
 		pcc.mutex.Lock()
 		if pcc.numRunningCaptures != 0 {
