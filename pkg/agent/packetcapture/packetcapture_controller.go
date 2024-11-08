@@ -75,18 +75,9 @@ const (
 
 	// defines how many capture request we can handle concurrently. waiting captures will be
 	// marked as Pending until they can be processed.
-<<<<<<< HEAD
 	maxConcurrentCaptures     = 16
 	defaultTimeoutDuration    = 60 * time.Second
-=======
-	maxConcurrentCaptures = 16
-
-	contextTimeoutErrMsg   = "context deadline exceeded"
-	defaultTimeoutDuration = 60 * time.Second
-
->>>>>>> cc9ff24e1 (update)
 	captureStatusUpdatePeriod = 10 * time.Second
-
 	// PacketCapture uses a dedicated Secret object to store authentication information for a file server.
 	// #nosec G101
 	fileServerAuthSecretName = "antrea-packetcapture-fileserver-auth"
@@ -398,14 +389,8 @@ func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) strin
 	if len(podInterfaces) == 0 {
 		return ""
 	}
-<<<<<<< HEAD
-=======
-
->>>>>>> 59f80d372 (1)
 	return podInterfaces[0].InterfaceName
 }
-
-
 
 // startPacketCapture starts the capture on the target device. The actual capture process will be started
 // in a separated go routine.
