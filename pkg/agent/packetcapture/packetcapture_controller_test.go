@@ -469,21 +469,18 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		objs = append(objs, pc.pc)
 	}
 	pcc := newFakePacketCaptureController(t, nil, objs)
+	pcc.sftpUploader = &testUploader{url: "sftp://127.0.0.1:22/aaa"}
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	pcc.crdInformerFactory.Start(stopCh)
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 	pcc.informerFactory.Start(stopCh)
 	pcc.informerFactory.WaitForCacheSync(stopCh)
+	go pcc.Run(stopCh)
 	for _, item := range pcs {
 		t.Run(item.name, func(t *testing.T) {
-			fileName := item.pc.Name + ".pcapng"
-			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa", checkFileName: true}
-
-			go pcc.Run(stopCh)
 			assert.Eventually(t, func() bool {
 				result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
-
 				if err != nil {
 					return false
 				}
