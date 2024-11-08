@@ -273,12 +273,6 @@ func TestMultiplePacketCaptures(t *testing.T) {
 	pcc.informerFactory.WaitForCacheSync(stopCh)
 	go pcc.Run(stopCh)
 	assert.Eventually(t, func() bool {
-		pcc.mutex.Lock()
-		if pcc.numRunningCaptures != 0 {
-			t.Logf("Running captures: %d", pcc.numRunningCaptures)
-			return false
-		}
-		pcc.mutex.Unlock()
 		items, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().List(context.Background(), metav1.ListOptions{})
 		if err != nil {
 			return false
@@ -287,11 +281,19 @@ func TestMultiplePacketCaptures(t *testing.T) {
 			for _, cond := range result.Status.Conditions {
 				if cond.Type == crdv1alpha1.PacketCaptureCompleted || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
 					if cond.Status == metav1.ConditionFalse {
+						t.Logf("not finished capture: %s %+v", result.Name, result.Status)
 						return false
 					}
 				}
 			}
 		}
+		pcc.mutex.Lock()
+		if pcc.numRunningCaptures != 0 {
+			t.Logf("Running captures: %d", pcc.numRunningCaptures)
+			return false
+		}
+		pcc.mutex.Unlock()
+
 		return true
 	}, 5*time.Second, 20*time.Millisecond)
 
