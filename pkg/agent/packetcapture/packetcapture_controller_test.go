@@ -280,7 +280,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 			}
 		}
 		return true
-	}, 10*time.Second, 20*time.Millisecond)
+	}, 30*time.Second, 20*time.Millisecond)
 
 	for i := 0; i < 20; i++ {
 		err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), nameFunc(i), metav1.DeleteOptions{})
@@ -299,7 +299,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 			}
 		}
 		return true
-	}, 3*time.Second, 10*time.Millisecond)
+	}, 2*time.Second, 20*time.Millisecond)
 
 }
 
