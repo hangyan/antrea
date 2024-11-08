@@ -85,9 +85,9 @@ const (
 type packetCapturePhase string
 
 const (
-	packetCapturePhasePending   packetCapturePhase = ""
-	packetCapturePhaseRunning   packetCapturePhase = "Running"
-	packetCapturePhaseCompleted packetCapturePhase = "Completed"
+	packetCapturePhasePending  packetCapturePhase = ""
+	packetCapturePhaseStarted  packetCapturePhase = "Started"
+	packetCapturePhaseComplete packetCapturePhase = "Complete"
 )
 
 var (
@@ -301,9 +301,9 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			state.cancel = cancel
 			if err = c.startPacketCapture(ctx, pc, device); err != nil {
-				phase = packetCapturePhaseCompleted
+				phase = packetCapturePhaseComplete
 			} else {
-				phase = packetCapturePhaseRunning
+				phase = packetCapturePhaseStarted
 				c.numRunningCaptures += 1
 			}
 		}
@@ -402,7 +402,7 @@ func (c *Controller) startPacketCapture(ctx context.Context, pc *crdv1alpha1.Pac
 			c.numRunningCaptures -= 1
 			state := c.captures[pc.Name]
 			if state != nil {
-				state.phase = packetCapturePhaseCompleted
+				state.phase = packetCapturePhaseComplete
 				state.err = captureErr
 			}
 
@@ -594,7 +594,7 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 	if state.err != nil {
 		updatedStatus.FilePath = ""
 		conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
-			Type:               crdv1alpha1.PacketCaptureCompleted,
+			Type:               crdv1alpha1.PacketCaptureComplete,
 			Status:             metav1.ConditionStatus(v1.ConditionFalse),
 			LastTransitionTime: metav1.Now(),
 			Reason:             "CaptureFailed",
@@ -604,7 +604,7 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 		if errors.Is(state.err, context.DeadlineExceeded) {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					Status:             metav1.ConditionStatus(v1.ConditionTrue),
 					LastTransitionTime: t,
 					Reason:             "Timeout",
@@ -613,7 +613,7 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 		} else if state.isCaptureSuccessful() {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					Status:             metav1.ConditionStatus(v1.ConditionTrue),
 					LastTransitionTime: t,
 					Reason:             "Succeed",
@@ -629,11 +629,22 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 				Message:            state.err.Error(),
 			})
 		}
+		if state.phase == packetCapturePhasePending {
+			conditions = []crdv1alpha1.PacketCaptureCondition{
+				{
+					Type:               crdv1alpha1.PacketCaptureStarted,
+					Status:             metav1.ConditionStatus(v1.ConditionFalse),
+					LastTransitionTime: t,
+					Reason:             "StartFailed",
+					Message:            state.err.Error(),
+				},
+			}
+		}
 	} else {
 		if state.isCaptureSuccessful() {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					Status:             metav1.ConditionStatus(v1.ConditionTrue),
 					LastTransitionTime: t,
 					Reason:             "Succeed",
@@ -647,16 +658,16 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 					Reason:             "Succeed",
 				})
 			}
-		} else if state.phase == packetCapturePhaseRunning {
+		} else if state.phase == packetCapturePhaseStarted {
 			conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
-				Type:               crdv1alpha1.PacketCaptureRunning,
+				Type:               crdv1alpha1.PacketCaptureStarted,
 				Status:             metav1.ConditionStatus(v1.ConditionTrue),
 				LastTransitionTime: t,
 			})
-		} else {
+		} else if state.phase == packetCapturePhasePending {
 			conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
-				Type:               crdv1alpha1.PacketCaptureRunning,
-				Status:             metav1.ConditionStatus(v1.ConditionTrue),
+				Type:               crdv1alpha1.PacketCaptureStarted,
+				Status:             metav1.ConditionStatus(v1.ConditionFalse),
 				LastTransitionTime: t,
 			})
 		}

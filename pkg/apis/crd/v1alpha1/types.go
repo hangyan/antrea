@@ -480,13 +480,11 @@ type PacketCaptureStatus struct {
 type PacketCaptureConditionType string
 
 const (
-	// PacketCapturePending means this request is still pending.
-	PacketCapturePending PacketCaptureConditionType = "PacketCapturePending"
-	// PacketCaptureRunning means antrea is processing this capture request.
-	PacketCaptureRunning PacketCaptureConditionType = "PacketCaptureRunning"
-	// PacketCaptureCompleted means enough packets have been captured and saved in an antrea-agent Pod locally already, but results haven't been
+	// PacketCaptureStarted means this request has been started.
+	PacketCaptureStarted PacketCaptureConditionType = "PacketCaptureStarted"
+	// PacketCaptureComplete means enough packets have been captured and saved in an antrea-agent Pod locally already, but results haven't been
 	// uploaded yet (if a file server has been configured).
-	PacketCaptureCompleted PacketCaptureConditionType = "PacketCaptureCompleted"
+	PacketCaptureComplete PacketCaptureConditionType = "PacketCaptureComplete"
 	// PacketCaptureFileUploaded means the captured packets file has been uploaded to the target file server.
 	PacketCaptureFileUploaded PacketCaptureConditionType = "PacketCaptureFileUploaded"
 )
