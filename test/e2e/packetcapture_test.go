@@ -53,7 +53,7 @@ var (
 	testNonExistPort int32 = 8085
 
 	pcTimeoutReason = "PacketCapture timeout"
-	pcShortTimeout  = uint16(5)
+	pcShortTimeout  = uint32(5)
 )
 
 type pcTestCase struct {
@@ -604,13 +604,13 @@ func runPacketCaptureTest(t *testing.T, data *TestData, tc pcTestCase) {
 
 	timeout := tc.pc.Spec.Timeout
 	if timeout == nil {
-		tv := uint16(15)
+		tv := uint32(15)
 		timeout = &tv
 	}
 
 	if strings.Contains(tc.name, "timeout") {
 		// wait more for status update.
-		tv := *timeout + uint16(10)
+		tv := *timeout + uint32(10)
 		timeout = &tv
 	}
 
