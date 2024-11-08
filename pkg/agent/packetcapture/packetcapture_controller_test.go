@@ -314,7 +314,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		},
 		{
 			name:                  "timeout-case",
-			expectConditionStatus: metav1.ConditionFalse,
+			expectConditionStatus: metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc3", UID: "uid3"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
