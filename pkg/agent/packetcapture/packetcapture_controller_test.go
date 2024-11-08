@@ -275,6 +275,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		pcc.mutex.Lock()
 		if pcc.numRunningCaptures != 0 {
+			t.Logf("Running captures: %d", pcc.numRunningCaptures)
 			return false
 		}
 		pcc.mutex.Unlock()
