@@ -441,7 +441,7 @@ func (c *Controller) performCapture(
 		klog.ErrorS(err, "Failed to start capture")
 		return err
 	}
-	klog.InfoS("Start capture packets", "name", pc.Name, "device", device)
+	klog.InfoS("Starting capture packets", "name", pc.Name, "device", device)
 	for {
 		select {
 		case packet := <-packets:
@@ -506,15 +506,20 @@ func (c *Controller) getPodIP(ctx context.Context, podRef *crdv1alpha1.PodRefere
 	if len(podInterfaces) > 0 {
 		podIP = podInterfaces[0].GetIPv4Addr()
 	} else {
-		pod, err := c.kubeClient.CoreV1().Pods(podRef.Namespace).Get(context.TODO(), podRef.Name, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get Pod %s/%s: %w", podRef.Namespace, podRef.Name, err)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			pod, err := c.kubeClient.CoreV1().Pods(podRef.Namespace).Get(context.TODO(), podRef.Name, metav1.GetOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get Pod %s/%s: %w", podRef.Namespace, podRef.Name, err)
+			}
+			podIPs := make([]net.IP, len(pod.Status.PodIPs))
+			for i, ip := range pod.Status.PodIPs {
+				podIPs[i] = net.ParseIP(ip.IP)
+			}
+			podIP = util.GetIPv4Addr(podIPs)
 		}
-		podIPs := make([]net.IP, len(pod.Status.PodIPs))
-		for i, ip := range pod.Status.PodIPs {
-			podIPs[i] = net.ParseIP(ip.IP)
-		}
-		podIP = util.GetIPv4Addr(podIPs)
 	}
 	if podIP == nil {
 		return nil, fmt.Errorf("cannot find IP with IPv4 address family for Pod %s/%s", podRef.Namespace, podRef.Name)
