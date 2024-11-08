@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
@@ -201,18 +202,28 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 	addPodInterface(ifaceStore, pod1.Namespace, pod1.Name, []string{pod1IPv4, ipv6}, pod1MAC.String(), int32(ofPortPod1))
 	addPodInterface(ifaceStore, pod2.Namespace, pod2.Name, []string{pod2IPv4}, pod2MAC.String(), int32(ofPortPod2))
 
-	pcController, _ := NewPacketCaptureController(
-		kubeClient,
-		crdClient,
-		packetCaptureInformer,
-		ifaceStore,
-	)
-	pcController.sftpUploader = &testUploader{}
-	pcController.captureInterface = &testCapture{}
+	// NewPacketCaptureController dont work on windows
+	pcController := &Controller{
+		kubeClient:            kubeClient,
+		crdClient:             crdClient,
+		packetCaptureInformer: packetCaptureInformer,
+		packetCaptureLister:   packetCaptureInformer.Lister(),
+		packetCaptureSynced:   packetCaptureInformer.Informer().HasSynced,
+		interfaceStore:        ifaceStore,
+		sftpUploader:          &testUploader{},
+		captureInterface:      &testCapture{},
+		captures:              make(map[string]*packetCaptureState),
+	}
 	pcController.queue = workqueue.NewTypedRateLimitingQueueWithConfig(
 		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Millisecond*100, time.Millisecond*500),
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 	)
+	packetCaptureInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.addPacketCapture,
+		UpdateFunc: c.updatePacketCapture,
+		DeleteFunc: c.deletePacketCapture,
+	}, resyncPeriod)
+
 	t.Setenv("POD_NAME", "antrea-agent")
 	t.Setenv("POD_NAMESPACE", "kube-system")
 	return &fakePacketCaptureController{
