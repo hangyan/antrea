@@ -281,9 +281,12 @@ func TestMultiplePacketCaptures(t *testing.T) {
 			for _, cond := range result.Status.Conditions {
 				if cond.Type == crdv1alpha1.PacketCaptureCompleted || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
 					if cond.Status == metav1.ConditionFalse {
-						t.Logf("not finished capture: %s %+v", result.Name, result.Status)
+
 						return false
 					}
+				}
+				if cond.Type == crdv1alpha1.PacketCapturePending {
+					t.Logf("pending ones: %s %+v", result.Name, result.Status)
 				}
 			}
 		}
