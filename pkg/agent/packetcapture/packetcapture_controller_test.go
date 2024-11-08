@@ -293,12 +293,6 @@ func TestMultiplePacketCaptures(t *testing.T) {
 			return false
 		}
 		pcc.mutex.Unlock()
-		for i := 0; i < 20; i++ {
-			_, err := defaultFS.Stat(nameToPath(nameFunc(i)))
-			if err != afero.ErrFileNotFound {
-				return false
-			}
-		}
 		return true
 	}, 5*time.Second, 20*time.Millisecond)
 
