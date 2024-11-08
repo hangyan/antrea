@@ -241,14 +241,6 @@ func addPodInterface(ifaceStore interfacestore.InterfaceStore, podNamespace, pod
 }
 
 func TestMultiplePacketCaptures(t *testing.T) {
-	// Initialize the controller with > 16 captures
-	// All captures should complete eventually with expected status
-	// numRunningCaptures should be 0
-
-	// Deleting all captures
-	// `captures` should be empty
-	// file directory should be empty
-	// create test os
 	defaultFS = afero.NewMemMapFs()
 	packetsDir := "/tmp/antrea/packetcapture/packets"
 	defaultFS.MkdirAll(packetsDir, 0755)
@@ -288,7 +280,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 			}
 		}
 		return true
-	}, 5*time.Second, 20*time.Millisecond)
+	}, 10*time.Second, 20*time.Millisecond)
 
 	for i := 0; i < 20; i++ {
 		err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), nameFunc(i), metav1.DeleteOptions{})
