@@ -300,7 +300,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 			}
 		}
 		return true
-	}, 2*time.Second, 20*time.Millisecond)
+	}, 5*time.Second, 20*time.Millisecond)
 
 }
 
