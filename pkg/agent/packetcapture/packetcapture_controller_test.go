@@ -278,7 +278,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 		}
 		for _, result := range items.Items {
 			for _, cond := range result.Status.Conditions {
-				if cond.Type == crdv1alpha1.PacketCaptureCompleted || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
+				if cond.Type == crdv1alpha1.PacketCaptureComplete || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
 					if cond.Status == metav1.ConditionFalse {
 						return false
 					}
@@ -440,7 +440,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				return false
 			}
 			for _, cond := range result.Status.Conditions {
-				if cond.Type == crdv1alpha1.PacketCaptureCompleted || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
+				if cond.Type == crdv1alpha1.PacketCaptureComplete || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
 					assert.Equal(t, item.expectConditionStatus, cond.Status)
 					if item.expectConditionStatus != cond.Status {
 						return false
@@ -473,7 +473,7 @@ func TestMergeConditions(t *testing.T) {
 			name: "use-old",
 			new: []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					LastTransitionTime: metav1.Now(),
 				},
 				{
@@ -483,13 +483,13 @@ func TestMergeConditions(t *testing.T) {
 			},
 			old: []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					LastTransitionTime: metav1.Now(),
 				},
 			},
 			expected: []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					LastTransitionTime: metav1.Now(),
 				},
 				{
@@ -502,7 +502,7 @@ func TestMergeConditions(t *testing.T) {
 			name: "use-new",
 			new: []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					LastTransitionTime: metav1.Now(),
 					Status:             metav1.ConditionTrue,
 				},
@@ -513,14 +513,14 @@ func TestMergeConditions(t *testing.T) {
 			},
 			old: []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					LastTransitionTime: metav1.Now(),
 					Status:             metav1.ConditionFalse,
 				},
 			},
 			expected: []crdv1alpha1.PacketCaptureCondition{
 				{
-					Type:               crdv1alpha1.PacketCaptureCompleted,
+					Type:               crdv1alpha1.PacketCaptureComplete,
 					LastTransitionTime: metav1.Now(),
 					Status:             metav1.ConditionTrue,
 				},
