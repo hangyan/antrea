@@ -71,11 +71,11 @@ func compareProtocol(protocol uint32, skipTrue, skipFalse uint8) bpf.Instruction
 	return bpf.JumpIf{Cond: bpf.JumpEqual, Val: protocol, SkipTrue: skipTrue, SkipFalse: skipFalse}
 }
 
-// compilePacketFilter compile the CRD spec to bpf instructions. For now, we only focus on
-// ipv4 traffic. Compare to the raw BPF filter supported by libpcap, we only need to support
-// limited user cases, so an expression parser is not needed.
+// compilePacketFilter compiles the CRD spec to bpf instructions. For now, we only focus on
+// ipv4 traffic. Compared to the raw BPF filter supported by libpcap, we only need to support
+// limited use cases, so an expression parser is not needed.
 func compilePacketFilter(packetSpec *crdv1alpha1.Packet, srcIP, dstIP net.IP) []bpf.Instruction {
-	size := uint8(calInstructionsSize(packetSpec))
+	size := uint8(calculateInstructionsSize(packetSpec))
 
 	// ipv4 check
 	inst := []bpf.Instruction{loadEtherKind}
@@ -156,7 +156,7 @@ func compilePacketFilter(packetSpec *crdv1alpha1.Packet, srcIP, dstIP net.IP) []
 }
 
 // We need to figure out how long the instruction list will be first. It will be used in the instructions' jump case.
-// For example, If you provide all the filter supported by `PacketCapture`, it will end with the following BPF filter string:
+// For example, If you provide all the filters supported by `PacketCapture`, it will end with the following BPF filter string:
 // 'ip proto 6 and src host 127.0.0.1 and dst host 127.0.0.1 and src port 123 and dst port 124'
 // And using `tcpdump -i <device> '<filter>' -d` will generate the following BPF instructions:
 // (000) ldh      [12]                                     # Load 2B at 12 (Ethertype)
@@ -177,7 +177,7 @@ func compilePacketFilter(packetSpec *crdv1alpha1.Packet, srcIP, dstIP net.IP) []
 // (015) ret      #262144                                  # MATCH
 // (016) ret      #0                                       # NOMATCH
 
-func calInstructionsSize(packet *crdv1alpha1.Packet) int {
+func calculateInstructionsSize(packet *crdv1alpha1.Packet) int {
 	count := 0
 	// load ethertype
 	count++

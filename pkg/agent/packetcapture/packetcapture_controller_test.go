@@ -388,8 +388,8 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 
 		go pcc.Run(stopCh)
 		time.Sleep(500 * time.Millisecond)
-		result, nil := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
-		assert.Nil(t, nil)
+		result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
+		assert.Nil(t, err)
 		for _, cond := range result.Status.Conditions {
 			if cond.Type == crdv1alpha1.PacketCaptureCompleted {
 				assert.Equal(t, item.expectConditionStatus, cond.Status)

@@ -32,7 +32,7 @@ var (
 	testDstPort     int32 = 80
 )
 
-func TestCalInstructionsSize(t *testing.T) {
+func TestCalculateInstructionsSize(t *testing.T) {
 	tt := []struct {
 		name   string
 		packet *crdv1alpha1.Packet
@@ -92,7 +92,7 @@ func TestCalInstructionsSize(t *testing.T) {
 
 	for _, item := range tt {
 		t.Run(item.name, func(t *testing.T) {
-			assert.Equal(t, item.count, calInstructionsSize(item.packet))
+			assert.Equal(t, item.count, calculateInstructionsSize(item.packet))
 		})
 	}
 }

@@ -16,7 +16,6 @@ package packetcapture
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"net"
@@ -78,7 +77,7 @@ const (
 
 	// reason for timeout
 	captureTimeoutReason   = "PacketCapture timeout"
-	defaultTimeoutDuration = time.Second * 60
+	defaultTimeoutDuration = 60 * time.Second
 
 	captureStatusUpdatePeriod = 10 * time.Second
 
@@ -125,7 +124,7 @@ type packetCaptureState struct {
 	cancel context.CancelFunc
 }
 
-func (pcs *packetCaptureState) isCaptureSucceed() bool {
+func (pcs *packetCaptureState) isCaptureSuccessful() bool {
 	return pcs.capturedPacketsNum == pcs.targetCapturedPacketsNum && pcs.targetCapturedPacketsNum > 0
 }
 
@@ -139,7 +138,7 @@ type Controller struct {
 	queue                 workqueue.TypedRateLimitingInterface[string]
 	sftpUploader          sftp.Uploader
 	captureInterface      PacketCapturer
-	lock                  sync.Mutex
+	mutex                 sync.Mutex
 	// A name-phase mapping for all PacketCapture CRs.
 	captures           map[string]*packetCaptureState
 	numRunningCaptures int
@@ -203,7 +202,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		return
 	}
 
-	// check the captures that are waiting in line.
 	for i := 0; i < defaultWorkers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
@@ -212,7 +210,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 func (c *Controller) addPacketCapture(obj interface{}) {
 	pc := obj.(*crdv1alpha1.PacketCapture)
-	klog.InfoS("Processing PacketCapture ADD event", "name", pc.Name)
+	klog.V(2).InfoS("Processing PacketCapture ADD event", "name", pc.Name)
 	c.enqueuePacketCapture(pc)
 }
 
@@ -220,14 +218,14 @@ func (c *Controller) updatePacketCapture(oldObj, newObj interface{}) {
 	newPc := newObj.(*crdv1alpha1.PacketCapture)
 	oldPc := oldObj.(*crdv1alpha1.PacketCapture)
 	if newPc.Generation != oldPc.Generation {
-		klog.InfoS("Processing PacketCapture UPDATE event", "name", newPc.Name)
+		klog.V(2).InfoS("Processing PacketCapture UPDATE event", "name", newPc.Name)
 		c.enqueuePacketCapture(newPc)
 	}
 }
 
 func (c *Controller) deletePacketCapture(obj interface{}) {
 	pc := obj.(*crdv1alpha1.PacketCapture)
-	klog.InfoS("Processing PacketCapture DELETE event", "name", pc.Name)
+	klog.V(2).InfoS("Processing PacketCapture DELETE event", "name", pc.Name)
 	c.enqueuePacketCapture(pc)
 }
 
@@ -257,8 +255,8 @@ func (c *Controller) processPacketCaptureItem() bool {
 
 func (c *Controller) syncPacketCapture(pcName string) error {
 	cleanupStatus := func() {
-		c.lock.Lock()
-		defer c.lock.Unlock()
+		c.mutex.Lock()
+		defer c.mutex.Unlock()
 		state := c.captures[pcName]
 		if state != nil {
 			if state.cancel != nil {
@@ -278,6 +276,7 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 	// Capture will not occur on this Node if a corresponding Pod interface is not found.
 	device := c.getTargetCaptureDevice(pc)
 	if device == nil {
+		klog.V(4).InfoS("Skipping process PacketCapture", "name", pcName)
 		return nil
 	}
 
@@ -291,8 +290,8 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 	}
 
 	state := func() *packetCaptureState {
-		c.lock.Lock()
-		defer c.lock.Unlock()
+		c.mutex.Lock()
+		defer c.mutex.Unlock()
 		state := c.captures[pcName]
 		if state == nil {
 			state = &packetCaptureState{}
@@ -317,6 +316,7 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 				phase = packetCapturePhaseCompleted
 			} else {
 				phase = packetCapturePhaseRunning
+				c.numRunningCaptures += 1
 			}
 		}
 		state.phase = phase
@@ -358,7 +358,7 @@ func getPacketFileAndWriter(name string) (afero.File, *pcapgo.NgWriter, error) {
 	filePath := nameToPath(name)
 	var file afero.File
 	if _, err := os.Stat(filePath); err == nil {
-		klog.Warningf("The packet file %s already exists. This may be caused by an unexpected termination, will delete it", filePath)
+		klog.InfoS("Packet file already exists. This may be caused by an unexpected termination, will delete it", "path", filePath)
 		if err := defaultFS.Remove(filePath); err != nil {
 			return nil, nil, err
 		}
@@ -416,14 +416,14 @@ func (c *Controller) startPacketCapture(ctx context.Context, pc *crdv1alpha1.Pac
 	go func() {
 		captureErr := c.performCapture(ctx, pc, pcState, *device, srcIP, dstIp)
 		func() {
-			c.lock.Lock()
-			defer c.lock.Unlock()
+			c.mutex.Lock()
+			defer c.mutex.Unlock()
 			c.numRunningCaptures -= 1
 			state := c.captures[pc.Name]
 			state.phase = packetCapturePhaseCompleted
 			state.err = captureErr
 		}()
-		c.addPacketCapture(pc)
+		c.enqueuePacketCapture(pc)
 	}()
 	return nil
 }
@@ -444,13 +444,13 @@ func (c *Controller) performCapture(
 	for {
 		select {
 		case packet := <-packets:
-			c.lock.Lock()
-			if captureState.isCaptureSucceed() {
-				c.lock.Unlock()
+			c.mutex.Lock()
+			if captureState.isCaptureSuccessful() {
+				c.mutex.Unlock()
 				return nil
 			}
 			captureState.capturedPacketsNum++
-			c.lock.Unlock()
+			c.mutex.Unlock()
 			ci := gopacket.CaptureInfo{
 				Timestamp:     time.Now(),
 				CaptureLength: len(packet.Data()),
@@ -463,15 +463,11 @@ func (c *Controller) performCapture(
 			klog.V(5).InfoS("Capture packets", "name", captureState.name, "count",
 				captureState.capturedPacketsNum, "len", ci.Length)
 
-			c.lock.Lock()
-			reachTarget := captureState.isCaptureSucceed()
-			c.lock.Unlock()
+			c.mutex.Lock()
+			reachTarget := captureState.isCaptureSuccessful()
+			c.mutex.Unlock()
 			// use rate limiter to reduce the times we need to update status.
 			if reachTarget || captureState.updateRateLimiter.Allow() {
-				pc, err := c.packetCaptureLister.Get(captureState.name)
-				if err != nil {
-					return fmt.Errorf("get PacketCapture failed: %w", err)
-				}
 				// if reach the target. flush the file and upload it.
 				if reachTarget {
 					path := env.GetPodName() + ":" + nameToPath(pc.Name)
@@ -484,9 +480,9 @@ func (c *Controller) performCapture(
 						klog.V(4).InfoS("Upload captured packets", "name", pc.Name, "path", path)
 						statusPath = fmt.Sprintf("%s/%s.pcapng", pc.Spec.FileServer.URL, pc.Name)
 					}
-					c.lock.Lock()
+					c.mutex.Lock()
 					captureState.filePath = statusPath
-					c.lock.Unlock()
+					c.mutex.Unlock()
 					if err != nil {
 						return err
 					}
@@ -498,12 +494,7 @@ func (c *Controller) performCapture(
 				c.addPacketCapture(pc)
 			}
 		case <-ctx.Done():
-			pc, err := c.packetCaptureLister.Get(captureState.name)
-			if err != nil {
-				return fmt.Errorf("get PacketCapture failed: %w", err)
-			}
-			klog.InfoS("PacketCapture timeout", "name", pc.Name)
-			return errors.New(captureTimeoutReason)
+			return ctx.Err()
 		}
 	}
 }
@@ -605,7 +596,7 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 		FilePath:       state.filePath,
 	}
 	t := metav1.Now()
-	c.lock.Lock()
+	c.mutex.Lock()
 	if state.err != nil {
 		updatedStatus.FilePath = ""
 		conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
@@ -625,7 +616,7 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 					Message:            captureTimeoutReason,
 				},
 			}
-		} else if state.isCaptureSucceed() {
+		} else if state.isCaptureSuccessful() {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
 					Type:               crdv1alpha1.PacketCaptureCompleted,
@@ -645,7 +636,7 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 			})
 		}
 	} else {
-		if state.isCaptureSucceed() {
+		if state.isCaptureSuccessful() {
 			conditions = []crdv1alpha1.PacketCaptureCondition{
 				{
 					Type:               crdv1alpha1.PacketCaptureCompleted,
@@ -672,12 +663,12 @@ func (c *Controller) updateStatus(name string, state *packetCaptureState) error 
 			conditions = append(conditions, crdv1alpha1.PacketCaptureCondition{
 				Type:               crdv1alpha1.PacketCaptureRunning,
 				Status:             metav1.ConditionStatus(v1.ConditionTrue),
-				LastTransitionTime: metav1.Now(),
+				LastTransitionTime: t,
 			})
 		}
 
 	}
-	c.lock.Unlock()
+	c.mutex.Unlock()
 	updatedStatus.Conditions = conditions
 
 	if retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {

@@ -49,7 +49,7 @@ func (p *pcapCapture) Capture(ctx context.Context, device string, srcIP, dstIP n
 	eth.SetCaptureLength(maxSnapshotBytes)
 
 	inst := compilePacketFilter(packet, srcIP, dstIP)
-	klog.V(5).InfoS("Generated bpf instructions for Packetcapture", "device", device, "srcIP", srcIP, "dstIP", dstIP, "packetSpec", packet, "bpf instructions", inst)
+	klog.V(5).InfoS("Generated bpf instructions for Packetcapture", "device", device, "srcIP", srcIP, "dstIP", dstIP, "packetSpec", packet, "bpf", inst)
 	rawInst, err := bpf.Assemble(inst)
 	if err != nil {
 		return nil, err
