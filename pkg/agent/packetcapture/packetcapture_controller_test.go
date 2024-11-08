@@ -515,6 +515,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 	pcc.sftpUploader = &testUploader{url: "sftp://127.0.0.1:22/aaa"}
 	stopCh := make(chan struct{})
 	defer close(stopCh)
+	defer defaultFS.Remove(packetDirectory)
 	pcc.crdInformerFactory.Start(stopCh)
 	pcc.crdInformerFactory.WaitForCacheSync(stopCh)
 	pcc.informerFactory.Start(stopCh)
