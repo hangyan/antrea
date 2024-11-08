@@ -326,13 +326,15 @@ func TestMultiplePacketCaptures(t *testing.T) {
 // the testing pc to finish. on sandbox env, no good solution to open raw socket.
 func TestPacketCaptureControllerRun(t *testing.T) {
 	pcs := []struct {
-		name                  string
-		pc                    *crdv1alpha1.PacketCapture
-		expectConditionStatus metav1.ConditionStatus
+		name                 string
+		pc                   *crdv1alpha1.PacketCapture
+		expectCompleteStatus metav1.ConditionStatus
+		expectUploadStatus   metav1.ConditionStatus
 	}{
 		{
-			name:                  "start packetcapture",
-			expectConditionStatus: metav1.ConditionTrue,
+			name:                 "start packetcapture",
+			expectCompleteStatus: metav1.ConditionTrue,
+			expectUploadStatus:   metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc1", UID: "uid1"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -364,8 +366,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			},
 		},
 		{
-			name:                  "parse ip",
-			expectConditionStatus: metav1.ConditionTrue,
+			name:                 "parse ip",
+			expectCompleteStatus: metav1.ConditionTrue,
+			expectUploadStatus:   metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc2", UID: "uid2"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -397,8 +400,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			},
 		},
 		{
-			name:                  "invalid proto",
-			expectConditionStatus: metav1.ConditionFalse,
+			name:                 "invalid proto",
+			expectCompleteStatus: metav1.ConditionFalse,
+			expectUploadStatus:   metav1.ConditionFalse,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc4", UID: "uid4"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -430,8 +434,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			},
 		},
 		{
-			name:                  "timeout-case",
-			expectConditionStatus: metav1.ConditionTrue,
+			name:                 "timeout-case",
+			expectCompleteStatus: metav1.ConditionTrue,
+			expectUploadStatus:   metav1.ConditionFalse,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc3", UID: "uid3"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -462,6 +467,40 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:                 "upload failed",
+			expectCompleteStatus: metav1.ConditionTrue,
+			expectUploadStatus:   metav1.ConditionFalse,
+			pc: &crdv1alpha1.PacketCapture{
+				ObjectMeta: metav1.ObjectMeta{Name: "pc5", UID: "uid5"},
+				Spec: crdv1alpha1.PacketCaptureSpec{
+					Source: crdv1alpha1.Source{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod1.Namespace,
+							Name:      pod1.Name,
+						},
+					},
+					Destination: crdv1alpha1.Destination{
+						Pod: &crdv1alpha1.PodReference{
+							Namespace: pod2.Namespace,
+							Name:      pod2.Name,
+						},
+					},
+					CaptureConfig: crdv1alpha1.CaptureConfig{
+						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
+							Number: 15,
+						},
+					},
+					Packet: &crdv1alpha1.Packet{
+						Protocol: &icmpProto,
+					},
+					FileServer: &crdv1alpha1.PacketCaptureFileServer{
+						URL: "sftp://127.0.0.1:22/aaa-invalid",
+					},
+					Timeout: &testCaptureTimeout,
+				},
+			},
+		},
 	}
 
 	objs := []runtime.Object{}
@@ -485,15 +524,14 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					return false
 				}
 				for _, cond := range result.Status.Conditions {
-					if cond.Type == crdv1alpha1.PacketCaptureComplete || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
-						assert.Equal(t, item.expectConditionStatus, cond.Status)
-						if item.expectConditionStatus != cond.Status {
-							t.Logf("status: %+v", result.Status)
-							return false
-						}
+					if cond.Type == crdv1alpha1.PacketCaptureComplete && item.expectCompleteStatus != cond.Status {
+						return false
+					}
+					if cond.Type == crdv1alpha1.PacketCaptureFileUploaded && item.expectUploadStatus != cond.Status {
+						return false
 					}
 				}
-				if item.expectConditionStatus == metav1.ConditionTrue {
+				if item.expectCompleteStatus == metav1.ConditionTrue {
 					if result.Status.NumberCaptured != testCaptureNum {
 						return false
 					}
