@@ -215,7 +215,7 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 		captures:              make(map[string]*packetCaptureState),
 	}
 	pcController.queue = workqueue.NewTypedRateLimitingQueueWithConfig(
-		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Millisecond*100, time.Millisecond*500),
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Millisecond*50, time.Millisecond*200),
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 	)
 	packetCaptureInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
@@ -281,13 +281,10 @@ func TestMultiplePacketCaptures(t *testing.T) {
 			for _, cond := range result.Status.Conditions {
 				if cond.Type == crdv1alpha1.PacketCaptureCompleted || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
 					if cond.Status == metav1.ConditionFalse {
-
 						return false
 					}
 				}
-				if cond.Type == crdv1alpha1.PacketCapturePending {
-					t.Logf("pending ones: %s %+v", result.Name, result.Status)
-				}
+				t.Logf("pending ones: %s %+v", result.Name, result.Status)
 			}
 		}
 		pcc.mutex.Lock()
@@ -298,7 +295,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 		pcc.mutex.Unlock()
 
 		return true
-	}, 5*time.Second, 20*time.Millisecond)
+	}, 5*time.Second, 50*time.Millisecond)
 
 	for i := 0; i < 20; i++ {
 		err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), nameFunc(i), metav1.DeleteOptions{})
@@ -311,7 +308,7 @@ func TestMultiplePacketCaptures(t *testing.T) {
 		}
 		pcc.mutex.Unlock()
 		return true
-	}, 5*time.Second, 20*time.Millisecond)
+	}, 2*time.Second, 20*time.Millisecond)
 
 }
 
