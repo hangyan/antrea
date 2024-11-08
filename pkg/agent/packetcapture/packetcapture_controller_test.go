@@ -217,26 +217,30 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 	addPodInterface(ifaceStore, pod2.Namespace, pod2.Name, []string{pod2IPv4}, pod2MAC.String(), int32(ofPortPod2))
 
 	// NewPacketCaptureController dont work on windows
-	pcController := &Controller{
-		kubeClient:            kubeClient,
-		crdClient:             crdClient,
-		packetCaptureInformer: packetCaptureInformer,
-		packetCaptureLister:   packetCaptureInformer.Lister(),
-		packetCaptureSynced:   packetCaptureInformer.Informer().HasSynced,
-		interfaceStore:        ifaceStore,
-		sftpUploader:          &testUploader{},
-		captureInterface:      &testCapture{},
-		captures:              make(map[string]*packetCaptureState),
+	pcController, err := NewPacketCaptureController(kubeClient, crdClient, packetCaptureInformer, ifaceStore)
+	if err != nil {
+		pcController = &Controller{
+			kubeClient:            kubeClient,
+			crdClient:             crdClient,
+			packetCaptureInformer: packetCaptureInformer,
+			packetCaptureLister:   packetCaptureInformer.Lister(),
+			packetCaptureSynced:   packetCaptureInformer.Informer().HasSynced,
+			interfaceStore:        ifaceStore,
+			captures:              make(map[string]*packetCaptureState),
+		}
+		packetCaptureInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+			AddFunc:    pcController.addPacketCapture,
+			UpdateFunc: pcController.updatePacketCapture,
+			DeleteFunc: pcController.deletePacketCapture,
+		}, resyncPeriod)
 	}
+
+	pcController.sftpUploader = &testUploader{}
+	pcController.captureInterface = &testCapture{}
 	pcController.queue = workqueue.NewTypedRateLimitingQueueWithConfig(
 		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Millisecond*50, time.Millisecond*200),
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 	)
-	packetCaptureInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc:    pcController.addPacketCapture,
-		UpdateFunc: pcController.updatePacketCapture,
-		DeleteFunc: pcController.deletePacketCapture,
-	}, resyncPeriod)
 
 	t.Setenv("POD_NAME", "antrea-agent")
 	t.Setenv("POD_NAMESPACE", "kube-system")
@@ -434,7 +438,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 			},
 		},
 		{
-			name:                 "timeout-case",
+			name:                 "timeout case",
 			expectCompleteStatus: metav1.ConditionTrue,
 			expectUploadStatus:   metav1.ConditionFalse,
 			pc: &crdv1alpha1.PacketCapture{
