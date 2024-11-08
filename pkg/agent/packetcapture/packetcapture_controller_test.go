@@ -219,9 +219,9 @@ func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Objec
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: "packetcapture"},
 	)
 	packetCaptureInformer.Informer().AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addPacketCapture,
-		UpdateFunc: c.updatePacketCapture,
-		DeleteFunc: c.deletePacketCapture,
+		AddFunc:    pcController.addPacketCapture,
+		UpdateFunc: pcController.updatePacketCapture,
+		DeleteFunc: pcController.deletePacketCapture,
 	}, resyncPeriod)
 
 	t.Setenv("POD_NAME", "antrea-agent")
