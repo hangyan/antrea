@@ -76,7 +76,6 @@ const (
 	// defines how many capture request we can handle concurrently. waiting captures will be
 	// marked as Pending until they can be processed.
 	maxConcurrentCaptures     = 16
-	defaultTimeoutDuration    = 60 * time.Second
 	captureStatusUpdatePeriod = 10 * time.Second
 	// PacketCapture uses a dedicated Secret object to store authentication information for a file server.
 	// #nosec G101
@@ -303,10 +302,8 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 		if c.numRunningCaptures >= maxConcurrentCaptures {
 			err = fmt.Errorf("PacketCapture running count reach limit")
 		} else {
-			timeout := defaultTimeoutDuration
-			if pc.Spec.Timeout != nil {
-				timeout = time.Duration(*pc.Spec.Timeout) * time.Second
-			}
+			// crd spec make sure it's not nil
+			timeout := time.Duration(*pc.Spec.Timeout) * time.Second
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			state.cancel = cancel
 			if err = c.startPacketCapture(ctx, pc, device); err != nil {
@@ -621,7 +618,6 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 					Status:             metav1.ConditionStatus(v1.ConditionTrue),
 					LastTransitionTime: t,
 					Reason:             "Timeout",
-					Message:            state.err.Error(),
 				},
 			}
 		} else if state.isCaptureSuccessful() {

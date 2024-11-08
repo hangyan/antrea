@@ -97,19 +97,6 @@ var (
 	}
 )
 
-func generateTestSecret() *v1.Secret {
-	return &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "AAA",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"username": []byte("AAA"),
-			"password": []byte("BBBCCC"),
-		},
-	}
-}
-
 func genTestCR(name string, num int32) *crdv1alpha1.PacketCapture {
 	result := &crdv1alpha1.PacketCapture{
 		ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(fmt.Sprintf("uid-%s", name))},
@@ -201,7 +188,7 @@ type fakePacketCaptureController struct {
 
 func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Object, initObjects []runtime.Object) *fakePacketCaptureController {
 	controller := gomock.NewController(t)
-	objs := append(runtimeObjects, &pod1, &pod2, &pod3, &secret1, generateTestSecret())
+	objs := append(runtimeObjects, &pod1, &pod2, &pod3, &secret1)
 	kubeClient := fake.NewSimpleClientset(objs...)
 	crdClient := fakeversioned.NewSimpleClientset(initObjects...)
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdClient, 0)
