@@ -479,34 +479,35 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		t.Run(item.name, func(t *testing.T) {
 			fileName := item.pc.Name + ".pcapng"
 			pcc.sftpUploader = &testUploader{fileName: fileName, url: "sftp://127.0.0.1:22/aaa", checkFileName: true}
-		})
-		go pcc.Run(stopCh)
-		assert.Eventually(t, func() bool {
-			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
 
-			if err != nil {
-				return false
-			}
-			for _, cond := range result.Status.Conditions {
-				if cond.Type == crdv1alpha1.PacketCaptureComplete || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
-					assert.Equal(t, item.expectConditionStatus, cond.Status)
-					if item.expectConditionStatus != cond.Status {
-						t.Logf("status: %+v", result.Status)
+			go pcc.Run(stopCh)
+			assert.Eventually(t, func() bool {
+				result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
+
+				if err != nil {
+					return false
+				}
+				for _, cond := range result.Status.Conditions {
+					if cond.Type == crdv1alpha1.PacketCaptureComplete || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
+						assert.Equal(t, item.expectConditionStatus, cond.Status)
+						if item.expectConditionStatus != cond.Status {
+							t.Logf("status: %+v", result.Status)
+							return false
+						}
+					}
+				}
+				if item.expectConditionStatus == metav1.ConditionTrue {
+					if result.Status.NumberCaptured != testCaptureNum {
 						return false
 					}
 				}
-			}
-			if item.expectConditionStatus == metav1.ConditionTrue {
-				if result.Status.NumberCaptured != testCaptureNum {
-					return false
-				}
-			}
-			// delete cr
-			err = pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
-			return err == nil
+				// delete cr
+				err = pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
+				return err == nil
 
-		}, 1*time.Second, 20*time.Millisecond)
-		stopCh <- struct{}{}
+			}, 1*time.Second, 20*time.Millisecond)
+			stopCh <- struct{}{}
+		})
 	}
 }
 
