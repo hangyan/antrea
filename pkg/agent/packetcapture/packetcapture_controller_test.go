@@ -56,6 +56,7 @@ var (
 	pod2MAC, _ = net.ParseMAC("aa:bb:cc:dd:ee:00")
 	ofPortPod1 = uint32(1)
 	ofPortPod2 = uint32(2)
+	timeout    = uint32(1)
 
 	icmpProto    = intstr.FromString("ICMP")
 	invalidProto = intstr.FromString("INVALID")
@@ -274,6 +275,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
+					Timeout: &timeout,
 				},
 			},
 		},
@@ -306,6 +308,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
+					Timeout: &timeout,
 				},
 			},
 		},
@@ -338,6 +341,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
+					Timeout: &timeout,
 				},
 			},
 		},
