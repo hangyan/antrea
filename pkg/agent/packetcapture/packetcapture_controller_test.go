@@ -425,29 +425,35 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		})
 
 		go pcc.Run(stopCh)
-		time.Sleep(500 * time.Millisecond)
-		result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
-		assert.Nil(t, err)
-		for _, cond := range result.Status.Conditions {
-			if cond.Type == crdv1alpha1.PacketCaptureCompleted {
-				assert.Equal(t, item.expectConditionStatus, cond.Status)
-			}
-			if cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
-				assert.Equal(t, item.expectConditionStatus, cond.Status)
-			}
-		}
+		assert.Eventually(t, func() bool {
+			result, err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Get(context.Background(), item.pc.Name, metav1.GetOptions{})
 
-		if item.expectConditionStatus == metav1.ConditionTrue {
-			assert.Equal(t, int32(15), result.Status.NumberCaptured)
-		}
+			if err != nil {
+				return false
+			}
+			for _, cond := range result.Status.Conditions {
+				if cond.Type == crdv1alpha1.PacketCaptureCompleted || cond.Type == crdv1alpha1.PacketCaptureFileUploaded {
+					assert.Equal(t, item.expectConditionStatus, cond.Status)
+					if item.expectConditionStatus != cond.Status {
+						return false
+					}
+				}
+			}
 
-		// delete cr
-		err = pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
-		require.NoError(t, err)
+			if item.expectConditionStatus == metav1.ConditionTrue {
+				if result.Status.NumberCaptured != testCaptureNum {
+					return false
+				}
+			}
+
+			// delete cr
+			err = pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
+			return err == nil
+
+		}, 1*time.Second, 20*time.Millisecond)
 
 		stopCh <- struct{}{}
 	}
-
 }
 
 func TestMergeConditions(t *testing.T) {
