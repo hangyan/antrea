@@ -75,18 +75,8 @@ const (
 
 	// defines how many capture request we can handle concurrently. waiting captures will be
 	// marked as Pending until they can be processed.
-<<<<<<< HEAD
 	maxConcurrentCaptures     = 16
-	defaultTimeoutDuration    = 60 * time.Second
-=======
-	maxConcurrentCaptures = 16
-
-	contextTimeoutErrMsg   = "context deadline exceeded"
-	defaultTimeoutDuration = 60 * time.Second
-
->>>>>>> cc9ff24e1 (update)
 	captureStatusUpdatePeriod = 10 * time.Second
-
 	// PacketCapture uses a dedicated Secret object to store authentication information for a file server.
 	// #nosec G101
 	fileServerAuthSecretName = "antrea-packetcapture-fileserver-auth"
@@ -312,10 +302,8 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 		if c.numRunningCaptures >= maxConcurrentCaptures {
 			err = fmt.Errorf("PacketCapture running count reach limit")
 		} else {
-			timeout := defaultTimeoutDuration
-			if pc.Spec.Timeout != nil {
-				timeout = time.Duration(*pc.Spec.Timeout) * time.Second
-			}
+			// crd spec make sure it's not nil
+			timeout := time.Duration(*pc.Spec.Timeout) * time.Second
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			state.cancel = cancel
 			if err = c.startPacketCapture(ctx, pc, device); err != nil {
@@ -398,14 +386,8 @@ func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) strin
 	if len(podInterfaces) == 0 {
 		return ""
 	}
-<<<<<<< HEAD
-=======
-
->>>>>>> 59f80d372 (1)
 	return podInterfaces[0].InterfaceName
 }
-
-
 
 // startPacketCapture starts the capture on the target device. The actual capture process will be started
 // in a separated go routine.
@@ -456,7 +438,7 @@ func (c *Controller) performCapture(
 		klog.ErrorS(err, "Failed to start capture")
 		return err
 	}
-	klog.InfoS("Start capture packets", "name", pc.Name, "device", device)
+	klog.InfoS("Starting capture packets", "name", pc.Name, "device", device)
 	for {
 		select {
 		case packet := <-packets:
@@ -521,15 +503,20 @@ func (c *Controller) getPodIP(ctx context.Context, podRef *crdv1alpha1.PodRefere
 	if len(podInterfaces) > 0 {
 		podIP = podInterfaces[0].GetIPv4Addr()
 	} else {
-		pod, err := c.kubeClient.CoreV1().Pods(podRef.Namespace).Get(context.TODO(), podRef.Name, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get Pod %s/%s: %w", podRef.Namespace, podRef.Name, err)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			pod, err := c.kubeClient.CoreV1().Pods(podRef.Namespace).Get(context.TODO(), podRef.Name, metav1.GetOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get Pod %s/%s: %w", podRef.Namespace, podRef.Name, err)
+			}
+			podIPs := make([]net.IP, len(pod.Status.PodIPs))
+			for i, ip := range pod.Status.PodIPs {
+				podIPs[i] = net.ParseIP(ip.IP)
+			}
+			podIP = util.GetIPv4Addr(podIPs)
 		}
-		podIPs := make([]net.IP, len(pod.Status.PodIPs))
-		for i, ip := range pod.Status.PodIPs {
-			podIPs[i] = net.ParseIP(ip.IP)
-		}
-		podIP = util.GetIPv4Addr(podIPs)
 	}
 	if podIP == nil {
 		return nil, fmt.Errorf("cannot find IP with IPv4 address family for Pod %s/%s", podRef.Namespace, podRef.Name)
@@ -631,7 +618,6 @@ func (c *Controller) updateStatus(ctx context.Context, name string, state *packe
 					Status:             metav1.ConditionStatus(v1.ConditionTrue),
 					LastTransitionTime: t,
 					Reason:             "Timeout",
-					Message:            state.err.Error(),
 				},
 			}
 		} else if state.isCaptureSuccessful() {

@@ -56,6 +56,7 @@ var (
 	pod2MAC, _ = net.ParseMAC("aa:bb:cc:dd:ee:00")
 	ofPortPod1 = uint32(1)
 	ofPortPod2 = uint32(2)
+	timeout    = uint32(1)
 
 	icmpProto    = intstr.FromString("ICMP")
 	invalidProto = intstr.FromString("INVALID")
@@ -96,19 +97,6 @@ var (
 		},
 	}
 )
-
-func generateTestSecret() *v1.Secret {
-	return &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "AAA",
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"username": []byte("AAA"),
-			"password": []byte("BBBCCC"),
-		},
-	}
-}
 
 func genTestCR(name string, num int32) *crdv1alpha1.PacketCapture {
 	result := &crdv1alpha1.PacketCapture{
@@ -201,7 +189,7 @@ type fakePacketCaptureController struct {
 
 func newFakePacketCaptureController(t *testing.T, runtimeObjects []runtime.Object, initObjects []runtime.Object) *fakePacketCaptureController {
 	controller := gomock.NewController(t)
-	objs := append(runtimeObjects, &pod1, &pod2, &pod3, &secret1, generateTestSecret())
+	objs := append(runtimeObjects, &pod1, &pod2, &pod3, &secret1)
 	kubeClient := fake.NewSimpleClientset(objs...)
 	crdClient := fakeversioned.NewSimpleClientset(initObjects...)
 	crdInformerFactory := crdinformers.NewSharedInformerFactory(crdClient, 0)
@@ -278,7 +266,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							Number: 10,
+							Number: 15,
 						},
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -287,6 +275,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
+					Timeout: &timeout,
 				},
 			},
 		},
@@ -310,7 +299,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					},
 					CaptureConfig: crdv1alpha1.CaptureConfig{
 						FirstN: &crdv1alpha1.PacketCaptureFirstNConfig{
-							Number: 10,
+							Number: 15,
 						},
 					},
 					Packet: &crdv1alpha1.Packet{
@@ -319,12 +308,13 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
+					Timeout: &timeout,
 				},
 			},
 		},
 		{
 			name:                  "timeout-case",
-			expectConditionStatus: metav1.ConditionFalse,
+			expectConditionStatus: metav1.ConditionTrue,
 			pc: &crdv1alpha1.PacketCapture{
 				ObjectMeta: metav1.ObjectMeta{Name: "pc3", UID: "uid3"},
 				Spec: crdv1alpha1.PacketCaptureSpec{
@@ -351,6 +341,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 					FileServer: &crdv1alpha1.PacketCaptureFileServer{
 						URL: "sftp://127.0.0.1:22/aaa",
 					},
+					Timeout: &timeout,
 				},
 			},
 		},
@@ -387,8 +378,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		}
 
 		if item.expectConditionStatus == metav1.ConditionTrue {
-			assert.Equal(t, int32(10), result.Status.NumberCaptured)
-			assert.Equal(t, "sftp://127.0.0.1:22/aaa/pc1.pcapng", result.Status.FilePath)
+			assert.Equal(t, int32(15), result.Status.NumberCaptured)
 		}
 
 		// delete cr

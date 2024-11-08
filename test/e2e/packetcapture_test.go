@@ -258,7 +258,6 @@ func testPacketCapture(t *testing.T, data *TestData) {
 						Status:             metav1.ConditionStatus(v1.ConditionTrue),
 						LastTransitionTime: metav1.Now(),
 						Reason:             "Timeout",
-						Message:            "context deadline exceeded",
 					},
 				},
 			},
