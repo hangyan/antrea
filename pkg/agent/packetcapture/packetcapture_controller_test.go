@@ -405,7 +405,7 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 		}
 
 		// delete cr
-		err := pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
+		err = pcc.crdClient.CrdV1alpha1().PacketCaptures().Delete(context.TODO(), item.pc.Name, metav1.DeleteOptions{})
 		require.NoError(t, err)
 
 		stopCh <- struct{}{}
