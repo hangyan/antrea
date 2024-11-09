@@ -528,6 +528,9 @@ func TestPacketCaptureControllerRun(t *testing.T) {
 				if err != nil {
 					return false
 				}
+				if result.Name == "pc3" {
+					t.Logf("timeout result:%+v", result.Status)
+				}
 				for _, cond := range result.Status.Conditions {
 					if cond.Type == crdv1alpha1.PacketCaptureComplete && item.expectCompleteStatus != cond.Status {
 						return false
