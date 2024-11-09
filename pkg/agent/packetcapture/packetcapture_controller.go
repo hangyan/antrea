@@ -96,8 +96,6 @@ var (
 )
 
 type packetCaptureState struct {
-	// name is the PacketCapture name.
-	name string
 	// capturedPacketsNum records how many packets have been captured. Due to the RateLimiter,
 	// this may not be the real-time data.
 	capturedPacketsNum int32
@@ -279,7 +277,7 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 		return nil
 	}
 
-	state := func() *packetCaptureState {
+	state := func() packetCaptureState {
 		c.mutex.Lock()
 		defer c.mutex.Unlock()
 		state := c.captures[pcName]
@@ -290,7 +288,7 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 		phase := state.phase
 		klog.InfoS("Syncing PacketCapture", "name", pcName, "phase", phase)
 		if phase != packetCapturePhasePending {
-			return state
+			return *state
 		}
 
 		if c.numRunningCaptures >= maxConcurrentCaptures {
@@ -300,7 +298,7 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 			timeout := time.Duration(*pc.Spec.Timeout) * time.Second
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			state.cancel = cancel
-			if err = c.startPacketCapture(ctx, pc, device); err != nil {
+			if err = c.startPacketCapture(ctx, pc, state, device); err != nil {
 				phase = packetCapturePhaseComplete
 			} else {
 				phase = packetCapturePhaseStarted
@@ -310,14 +308,10 @@ func (c *Controller) syncPacketCapture(pcName string) error {
 		state.phase = phase
 		state.err = err
 		c.captures[pcName] = state
-		return state
+		return *state
 	}()
 
-	c.mutex.Lock()
-	newState := new(packetCaptureState)
-	*newState = *state
-	c.mutex.Unlock()
-	if updateErr := c.updateStatus(context.Background(), pcName, newState); updateErr != nil {
+	if updateErr := c.updateStatus(context.Background(), pcName, &state); updateErr != nil {
 		return fmt.Errorf("error when patching status: %w", updateErr)
 	}
 	return err
@@ -389,11 +383,8 @@ func (c *Controller) getTargetCaptureDevice(pc *crdv1alpha1.PacketCapture) strin
 
 // startPacketCapture starts the capture on the target device. The actual capture process will be started
 // in a separated go routine.
-func (c *Controller) startPacketCapture(ctx context.Context, pc *crdv1alpha1.PacketCapture, device string) error {
-	klog.V(4).InfoS("Started processing PacketCapture", "name", pc.Name)
-	pcState := c.captures[pc.Name]
-	pcState.name = pc.Name
-	klog.V(2).InfoS("Prepare capture on the current Node", "name", pc.Name, "device", device)
+func (c *Controller) startPacketCapture(ctx context.Context, pc *crdv1alpha1.PacketCapture, pcState *packetCaptureState, device string) error {
+	klog.V(2).InfoS("Started processing PacketCapture on the current Node", "name", pc.Name, "device", device)
 	go func() {
 		captureErr := c.performCapture(ctx, pc, pcState, device)
 		func() {
@@ -438,6 +429,8 @@ func (c *Controller) performCapture(
 		case packet := <-packets:
 			c.mutex.Lock()
 			captureState.capturedPacketsNum++
+			reachTarget := captureState.isCaptureSuccessful()
+			klog.V(5).InfoS("Captured packets count", "name", pc.Name, "count", captureState.capturedPacketsNum)
 			c.mutex.Unlock()
 			ci := gopacket.CaptureInfo{
 				Timestamp:     time.Now(),
@@ -448,12 +441,8 @@ func (c *Controller) performCapture(
 			if err != nil {
 				return fmt.Errorf("couldn't write packets: %w", err)
 			}
-			klog.V(5).InfoS("Capture packets", "name", captureState.name, "count",
-				captureState.capturedPacketsNum, "len", ci.Length)
+			klog.V(5).InfoS("Captured packet length", "name", pc.Name, "len", ci.Length)
 
-			c.mutex.Lock()
-			reachTarget := captureState.isCaptureSuccessful()
-			c.mutex.Unlock()
 			// if reach the target. flush the file and upload it.
 			if reachTarget {
 				path := env.GetPodName() + ":" + nameToPath(pc.Name)
@@ -517,6 +506,9 @@ func (c *Controller) getPodIP(ctx context.Context, podRef *crdv1alpha1.PodRefere
 func (c *Controller) parseIPs(ctx context.Context, pc *crdv1alpha1.PacketCapture) (srcIP, dstIP net.IP, err error) {
 	if pc.Spec.Source.Pod != nil {
 		srcIP, err = c.getPodIP(ctx, pc.Spec.Source.Pod)
+		if err != nil {
+			return
+		}
 	} else if pc.Spec.Source.IP != nil {
 		srcIP = net.ParseIP(*pc.Spec.Source.IP)
 		if srcIP == nil {
@@ -524,9 +516,11 @@ func (c *Controller) parseIPs(ctx context.Context, pc *crdv1alpha1.PacketCapture
 			return
 		}
 	}
-
 	if pc.Spec.Destination.Pod != nil {
 		dstIP, err = c.getPodIP(ctx, pc.Spec.Destination.Pod)
+		if err != nil {
+			return
+		}
 	} else if pc.Spec.Destination.IP != nil {
 		dstIP = net.ParseIP(*pc.Spec.Destination.IP)
 		if dstIP == nil {
